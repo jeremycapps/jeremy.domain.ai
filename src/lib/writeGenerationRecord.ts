@@ -9,6 +9,8 @@ interface WriteGenerationRecordInput {
   jobDescription: string;
   archetype: Archetype;
   selectedFiles: string[];
+  selectedCacheFiles: string[];
+  selectedSourceFiles: string[];
   selectedExperienceUnits: string[];
   resumeMarkdown: string;
   validationStatus: ValidationStatus;
@@ -34,6 +36,10 @@ export async function writeGenerationRecord(
     job_description_hash: createHash("sha256").update(input.jobDescription).digest("hex"),
     archetype: input.archetype,
     selected_files: input.selectedFiles,
+    cache_path: input.selectedCacheFiles[0],
+    source_path: input.selectedSourceFiles[0],
+    selected_cache_files: input.selectedCacheFiles,
+    selected_source_files: input.selectedSourceFiles,
     selected_experience_units: input.selectedExperienceUnits,
     output_file: toProjectRelative(root, outputPath),
     validation_status: input.validationStatus,

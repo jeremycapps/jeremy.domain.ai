@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { GenerateResumeRequest, ResumeResponse, RouteDecision } from "../types.js";
 import { generateResumeMarkdown } from "../lib/generateResume.js";
-import { listResumeArtifacts } from "../lib/loadArtifacts.js";
+import { listCachedResumeArtifacts } from "../lib/loadArtifacts.js";
 import { getAllExperienceUnits } from "../lib/loadContext.js";
 import { routeJob } from "../lib/routeJob.js";
 import { selectContext } from "../lib/selectContext.js";
@@ -49,7 +49,7 @@ export async function handleGenerateResume(body: unknown, root?: string): Promis
   const requestId = randomUUID();
   const request = validateRequest(body);
   const units = await getAllExperienceUnits(root);
-  const artifacts = await listResumeArtifacts(root);
+  const artifacts = await listCachedResumeArtifacts(root);
   const routeDecision = routeJob(
     request.job_description,
     units,
@@ -65,6 +65,8 @@ export async function handleGenerateResume(body: unknown, root?: string): Promis
       jobDescription: request.job_description,
       archetype: routeDecision.archetype,
       selectedFiles: selectedContext.files,
+      selectedCacheFiles: selectedContext.cache_files,
+      selectedSourceFiles: selectedContext.source_files,
       selectedExperienceUnits: selectedContext.experience_unit_ids,
       resumeMarkdown,
       validationStatus: validationReport.status
@@ -82,6 +84,8 @@ export async function handleGenerateResume(body: unknown, root?: string): Promis
     },
     selected_context: {
       files: selectedContext.files,
+      cache_files: selectedContext.cache_files,
+      source_files: selectedContext.source_files,
       experience_unit_ids: selectedContext.experience_unit_ids,
       used_full_context: selectedContext.used_full_context,
       selected_context_summary: selectedContext.selected_context_summary

@@ -55,7 +55,7 @@ function buildPrompt(jobDescription: string, context: SelectedContext): string {
     "SELECTED EXPERIENCE UNITS:",
     context.units.map(summarizeUnit).join("\n\n---\n\n"),
     "",
-    "CACHED RESUME ARTIFACT FOR STYLE/STRUCTURE ONLY:",
+    "CACHED RESUME TEXT FOR STYLE/STRUCTURE ONLY; THIS CACHE IS NOT SOURCE TRUTH:",
     context.artifact?.content ?? "(none)"
   ].join("\n");
 }

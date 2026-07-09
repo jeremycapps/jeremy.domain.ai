@@ -1,4 +1,4 @@
-import type { Archetype, ExperienceUnit, ResumeArtifact, RouteDecision } from "../types.js";
+import type { Archetype, CachedResumeArtifact, ExperienceUnit, RouteDecision } from "../types.js";
 
 const rules: Array<{ archetype: Archetype; keywords: string[]; reason: string }> = [
   {
@@ -61,7 +61,7 @@ function unitMatchesArchetype(unit: ExperienceUnit, archetype: Archetype): boole
 export function routeJob(
   jobDescription: string,
   units: ExperienceUnit[],
-  artifacts: ResumeArtifact[],
+  artifacts: CachedResumeArtifact[],
   archetypeHint?: string | null
 ): RouteDecision {
   const allowed = new Set<Archetype>([
@@ -83,7 +83,7 @@ export function routeJob(
   return {
     archetype,
     confidence,
-    selected_files: selectedArtifact ? [selectedArtifact.path] : [],
+    selected_files: selectedArtifact ? [selectedArtifact.cache_path] : [],
     selected_experience_units: confidence === "low" ? units.map((unit) => unit.id) : matchedUnits,
     reason: hinted
       ? `Used supported archetype_hint "${hinted}".`

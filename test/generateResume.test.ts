@@ -9,7 +9,8 @@ import { handleGenerateResume } from "../src/routes/generateResume.js";
 async function fixtureRoot() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "resume-router-"));
   await fs.mkdir(path.join(root, "data"), { recursive: true });
-  await fs.mkdir(path.join(root, "resumes"), { recursive: true });
+  await fs.mkdir(path.join(root, "source_artifacts"), { recursive: true });
+  await fs.mkdir(path.join(root, "cache"), { recursive: true });
   await fs.mkdir(path.join(root, "routes"), { recursive: true });
   await fs.writeFile(
     path.join(root, "data", "experience_units.yaml"),
@@ -37,13 +38,36 @@ async function fixtureRoot() {
     "utf8"
   );
   await fs.writeFile(
-    path.join(root, "resumes", "ai_product_strategy.md"),
+    path.join(root, "source_artifacts", "ai_product_strategy.docx"),
+    "original ai product strategy docx bytes",
+    "utf8"
+  );
+  await fs.writeFile(
+    path.join(root, "source_artifacts", "technical_operations.pdf"),
+    "original technical operations pdf bytes",
+    "utf8"
+  );
+  await fs.writeFile(
+    path.join(root, "cache", "ai_product_strategy.md"),
     "# AI Product Strategy Resume\n\nEvidence IDs: eu_ai_strategy\n",
     "utf8"
   );
   await fs.writeFile(
-    path.join(root, "resumes", "technical_operations.md"),
+    path.join(root, "cache", "technical_operations.md"),
     "# Technical Operations Resume\n\nEvidence IDs: eu_operations\n",
+    "utf8"
+  );
+  await fs.writeFile(
+    path.join(root, "data", "cache_manifest.yaml"),
+    [
+      "artifacts:",
+      "  - archetype: ai_product_strategy",
+      "    source_path: source_artifacts/ai_product_strategy.docx",
+      "    cache_path: cache/ai_product_strategy.md",
+      "  - archetype: technical_operations",
+      "    source_path: source_artifacts/technical_operations.pdf",
+      "    cache_path: cache/technical_operations.md"
+    ].join("\n"),
     "utf8"
   );
   return root;
@@ -56,7 +80,9 @@ async function sha256(filePath: string) {
 test("route_only request returns route, evidence, validation, and derivative generation record without model key", async () => {
   const root = await fixtureRoot();
   const sourcePath = path.join(root, "data", "experience_units.yaml");
+  const sourceArtifactPath = path.join(root, "source_artifacts", "ai_product_strategy.docx");
   const beforeHash = await sha256(sourcePath);
+  const beforeSourceArtifactHash = await sha256(sourceArtifactPath);
   const previousKey = process.env.OPENAI_API_KEY;
   delete process.env.OPENAI_API_KEY;
 
@@ -72,14 +98,19 @@ test("route_only request returns route, evidence, validation, and derivative gen
     assert.equal(response.status, "ok");
     assert.equal(response.route_decision.archetype, "ai_product_strategy");
     assert.match(response.route_decision.confidence, /high|medium/);
-    assert.deepEqual(response.selected_context.files, ["resumes/ai_product_strategy.md"]);
+    assert.deepEqual(response.selected_context.files, ["cache/ai_product_strategy.md"]);
+    assert.deepEqual(response.selected_context.cache_files, ["cache/ai_product_strategy.md"]);
+    assert.deepEqual(response.selected_context.source_files, ["source_artifacts/ai_product_strategy.docx"]);
     assert.deepEqual(response.selected_context.experience_unit_ids, ["eu_ai_strategy"]);
     assert.equal(response.resume.format, "markdown");
     assert.equal(response.evidence_report.supported_claims.length, 1);
     assert.equal(response.validation_report.status, "passed");
     assert.equal(response.generation_record.may_not_use_as.includes("source_truth"), true);
     assert.equal(response.generation_record.may_not_use_as.includes("new_experience_evidence"), true);
+    assert.equal(response.generation_record.cache_path, "cache/ai_product_strategy.md");
+    assert.equal(response.generation_record.source_path, "source_artifacts/ai_product_strategy.docx");
     assert.equal(await sha256(sourcePath), beforeHash);
+    assert.equal(await sha256(sourceArtifactPath), beforeSourceArtifactHash);
   } finally {
     if (previousKey) process.env.OPENAI_API_KEY = previousKey;
   }

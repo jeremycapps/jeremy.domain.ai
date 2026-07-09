@@ -23,7 +23,8 @@ async function listFilesIfDir(dir: string): Promise<string[]> {
 
 export async function inventoryExistingFiles(root = getProjectRoot()): Promise<FileInventory> {
   const dataFiles = await listFilesIfDir(path.join(root, "data"));
-  const resumeFiles = await listFilesIfDir(path.join(root, "resumes"));
+  const sourceArtifactFiles = await listFilesIfDir(path.join(root, "source_artifacts"));
+  const cacheFiles = await listFilesIfDir(path.join(root, "cache"));
   const routeFiles = await listFilesIfDir(path.join(root, "routes"));
   const required = path.join(root, "data", "experience_units.yaml");
   const missing_required: string[] = [];
@@ -36,7 +37,8 @@ export async function inventoryExistingFiles(root = getProjectRoot()): Promise<F
 
   return {
     data_files: dataFiles.map((file) => toProjectRelative(root, file)),
-    resume_files: resumeFiles.map((file) => toProjectRelative(root, file)),
+    source_artifact_files: sourceArtifactFiles.map((file) => toProjectRelative(root, file)),
+    cache_files: cacheFiles.map((file) => toProjectRelative(root, file)),
     route_files: routeFiles.map((file) => toProjectRelative(root, file)),
     missing_required
   };

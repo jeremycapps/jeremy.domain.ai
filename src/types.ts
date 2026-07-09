@@ -34,16 +34,18 @@ export interface ExperienceUnit {
   [key: string]: unknown;
 }
 
-export interface ResumeArtifact {
+export interface CachedResumeArtifact {
   archetype: string;
   filename: string;
-  path: string;
+  cache_path: string;
+  source_path?: string;
   content: string;
 }
 
 export interface FileInventory {
   data_files: string[];
-  resume_files: string[];
+  source_artifact_files: string[];
+  cache_files: string[];
   route_files: string[];
   missing_required: string[];
 }
@@ -58,11 +60,13 @@ export interface RouteDecision {
 
 export interface SelectedContext {
   files: string[];
+  cache_files: string[];
+  source_files: string[];
   experience_unit_ids: string[];
   used_full_context: boolean;
   selected_context_summary: string;
   units: ExperienceUnit[];
-  artifact?: ResumeArtifact;
+  artifact?: CachedResumeArtifact;
 }
 
 export interface EvidenceReport {
@@ -85,6 +89,10 @@ export interface GenerationRecord {
   job_description_hash: string;
   archetype: Archetype;
   selected_files: string[];
+  cache_path?: string;
+  source_path?: string;
+  selected_cache_files: string[];
+  selected_source_files: string[];
   selected_experience_units: string[];
   output_file: string;
   validation_status: ValidationStatus | "unvalidated";
