@@ -1,0 +1,300 @@
+resume_router_backend_execution:
+audience: Codex agent
+role: backend build executor
+owner: product_owner
+validator: ChatGPT validation agent
+product: evidence-bounded resume router backend
+north_star: Serve the existing experience and resume files through a simple backend that can route, generate, cache, and validate resume outputs.
+
+current_state:
+files_already_exist: true
+backend_exists: false
+task_focus: build_backend_runtime
+do_not_regenerate_source_files: true
+
+five_verbs[5]{verb,backend_meaning}:
+context	load existing source context files
+capture	store requests, outputs, and generation records
+route	classify job descriptions and select the right existing resume/context files
+translate	call model or renderer to produce a tailored resume
+validate	check output against source context and return validation report
+
+backend_goal:
+statement: Build a minimal API backend that accepts a job description and returns a resume response using existing generated files.
+success: A frontend or curl request can submit a job description and receive route decision, resume output, evidence report, and validation report.
+
+assumptions[5]{assumption,status}:
+experience_units_yaml_exists	true
+generated_resume_files_exist	true
+route_files_may_exist_or_can_be_stubbed	true
+backend_can_read_local_files	true
+v1_can_use_model_runtime	true
+
+non_goals[8]{item,reason}:
+generate_experience_units	already_done
+rewrite_existing_resumes	already_done
+build_full_frontend	not_backend_task
+add_auth	not_poc
+add_database	not_poc
+build_pdf_export	not_poc
+implement_no_model_runtime	not_first_backend_pass
+overfit_architecture	product_owner_will_reconcile_later
+
+required_backend_tree[14]{path,purpose}:
+src/server.ts	or app/api route entrypoint
+src/routes/generateResume.ts	POST endpoint for job description
+src/lib/loadContext.ts	load existing experience_units.yaml and related files
+src/lib/loadArtifacts.ts	load existing cached resumes/templates
+src/lib/routeJob.ts	classify job description into archetype
+src/lib/selectContext.ts	select smallest useful source slice
+src/lib/generateResume.ts	call model or renderer
+src/lib/validateResume.ts	validate resume claims against source context
+src/lib/writeGenerationRecord.ts	store generation metadata
+src/types.ts	shared request and response types
+data/	existing source context files
+resumes/	existing generated/cached resume artifacts
+routes/	route config if present, otherwise create stub
+outputs/	store generated backend outputs
+
+endpoint_contract:
+method: POST
+path: /api/generate-resume
+request:
+job_description: string
+options:
+mode: generate|route_only|validate_only
+archetype_hint: string|null
+use_cache: boolean
+response:
+request_id: string
+route_decision:
+archetype: string
+confidence: high|medium|low
+selected_files: list
+selected_experience_units: list
+reason: string
+resume:
+format: markdown
+content: string
+evidence_report:
+supported_claims: list
+adjacent_claims: list
+unsupported_requested_claims: list
+excluded_experience: list
+validation_report:
+status: passed|failed|needs_review
+unsupported_claims: list
+forbidden_claims: list
+recommended_edits: list
+generation_record:
+id: string
+output_file: string
+created_at: string
+
+implementation_sequence:
+step_1_inventory_existing_files:
+goal: detect existing generated files without mutating them
+tasks[5]{order,task}:
+1	list data directory
+2	list resumes directory
+3	list routes directory if present
+4	report discovered files
+5	fail clearly if required source file is missing
+output:
+file_inventory:
+data_files: list
+resume_files: list
+route_files: list
+missing_required: list
+
+```
+step_2_context_loader:
+  goal: load source truth into memory
+  tasks[4]{order,task}:
+    1	read data/experience_units.yaml
+    2	parse YAML
+    3	expose getAllExperienceUnits
+    4	expose getExperienceUnitsById
+  acceptance[3]{check,result}:
+    yaml_parses	required
+    unit_ids_available	required
+    loader_has_clear_error_messages	required
+
+step_3_artifact_loader:
+  goal: load existing generated resume artifacts
+  tasks[4]{order,task}:
+    1	read resumes directory
+    2	index markdown files by filename/archetype
+    3	expose getResumeArtifact
+    4	expose listResumeArtifacts
+  acceptance[3]{check,result}:
+    resume_files_discovered	required
+    artifact_lookup_works	required
+    missing_artifact_errors_are_clear	required
+
+step_4_route_job:
+  goal: classify job description into a resume archetype
+  first_pass: rules_based
+  fallback: low_confidence_general_operator
+  archetypes[6]{id,meaning}:
+    technical_operations	systems operations technical execution
+    ai_product_strategy	AI strategy market intelligence corporate development
+    implementation_strategy	solutions implementation FDE adjacent
+    customer_success_systems	customer success operations strategic support
+    product_operations	product ops internal systems workflow
+    general_operator	fallback
+  tasks[5]{order,task}:
+    1	create simple keyword rules
+    2	return archetype
+    3	return confidence
+    4	return reason
+    5	return selected files if matching artifact exists
+  acceptance[3]{check,result}:
+    route_decision_returned	required
+    low_confidence_supported	required
+    no_crash_on_short_jd	required
+
+step_5_select_context:
+  goal: reduce runtime context loaded into model
+  tasks[5]{order,task}:
+    1	map archetype to preferred experience unit tags or ids
+    2	select matching units
+    3	include cached resume artifact when available
+    4	fallback to all units only when route confidence is low
+    5	return selected_context_summary
+  acceptance[3]{check,result}:
+    selected_units_returned	required
+    selected_files_returned	required
+    fallback_path_exists	required
+
+step_6_generate_resume:
+  goal: produce tailored resume output
+  v1_mode: model_backed
+  tasks[6]{order,task}:
+    1	build strict prompt from selected context
+    2	include job description
+    3	include cached resume artifact if available
+    4	call model API if key exists
+    5	return clear error if model key missing
+    6	support route_only mode without model
+  constraints[8]{constraint,status}:
+    use_only_selected_context	required
+    do_not_invent_employers	required
+    do_not_invent_titles	required
+    do_not_invent_dates	required
+    do_not_invent_metrics	required
+    do_not_invent_tools	required
+    mark_gaps_required	required
+    include_evidence_report	required
+  acceptance[4]{check,result}:
+    model_call_works_if_key_present	required
+    route_only_works_without_key	required
+    output_contains_resume	required
+    output_contains_evidence_report	required
+
+step_7_validate_resume:
+  goal: return basic validation report
+  first_pass: heuristic_plus_source_id_check
+  tasks[6]{order,task}:
+    1	check output for unsupported employers
+    2	check output for unsupported titles
+    3	check output for unsupported tools if possible
+    4	require evidence unit ids in evidence report
+    5	flag missing evidence ids
+    6	return validation status
+  acceptance[4]{check,result}:
+    validation_report_returned	required
+    unsupported_claims_array_exists	required
+    forbidden_claims_array_exists	required
+    status_is_passed_failed_or_needs_review	required
+
+step_8_capture_generation:
+  goal: store generated output as artifact, not memory
+  tasks[6]{order,task}:
+    1	create outputs directory
+    2	write generated resume markdown
+    3	write generation record JSON or YAML
+    4	store job description hash not full JD by default
+    5	store selected files and unit ids
+    6	store validation status
+  generation_record:
+    id: string
+    created_at: string
+    job_description_hash: string
+    archetype: string
+    selected_files: list
+    selected_experience_units: list
+    output_file: string
+    validation_status: string
+    may_use_as: draft_base|style_reference|structure_reference
+    may_not_use_as: source_truth|new_experience_evidence
+  acceptance[4]{check,result}:
+    output_file_written	required
+    generation_record_written	required
+    record_marks_artifact_derivative	required
+    source_files_not_modified	required
+```
+
+final_backend_response_shape:
+resume_response:
+request_id: string
+status: ok|error
+route_decision: object
+selected_context:
+files: list
+experience_unit_ids: list
+used_full_context: boolean
+resume_markdown: string
+evidence_report: object
+validation_report: object
+generation_record: object
+
+validation_agent_instructions:
+role: Validate backend behavior, not product theory.
+tests[7]{test,expected}:
+route_only_request_returns_route	no_model_required
+generate_request_returns_resume	model_key_required
+missing_experience_units_file_fails_clear	clear_error
+short_job_description_routes_general	no_crash
+unsupported_requirement_is_gap	visible
+output_record_marks_derivative	true
+source_context_not_mutated	true
+report_schema:
+backend_validation:
+status: passed|failed|needs_review
+endpoint_tested: string
+failures: list
+unsupported_claims_found: list
+source_mutation_detected: true|false
+recommended_fixes: list
+
+product_owner_review:
+reconcile_against[5]{goal,question}:
+context	did_backend_load existing source truth correctly
+capture	did_backend store artifacts without canonizing them
+route	did_backend reduce context before generation
+translate	did_backend produce usable resume output
+validate	did_backend expose trust gaps clearly
+decision_outcomes[4]{outcome,meaning}:
+accept_backend	move to frontend polish
+request_fix	specific backend acceptance failed
+defer_router	use full context until route quality matters
+advance_to_no_model_runtime	only after cache and route quality are proven
+
+first_codex_directive:
+instruction: Build only the backend runtime for the already-generated files.
+must_do[6]{item,status}:
+load_existing_experience_units	required
+load_existing_resume_artifacts	required
+expose_generate_resume_endpoint	required
+return_route_decision	required
+return_evidence_and_validation_reports	required
+store_generation_record	required
+must_not_do[6]{item,status}:
+regenerate_experience_units	forbidden
+rewrite_all_resume_artifacts	forbidden
+build_full_router_before_endpoint_works	forbidden
+build_auth	forbidden
+build_database	forbidden
+mutate_source_truth	forbidden
+stop_when: POST /api/generate-resume can return route_decision, resume_markdown, evidence_report, validation_report, and generation_record using existing files.

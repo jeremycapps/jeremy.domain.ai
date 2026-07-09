@@ -1,0 +1,9 @@
+# Stub route config permitted by the backend directive when no route file exists.
+# Runtime v1 uses rules in src/lib/routeJob.ts and treats this file as future routing logic.
+archetypes:
+  - technical_operations
+  - ai_product_strategy
+  - implementation_strategy
+  - customer_success_systems
+  - product_operations
+  - general_operator
