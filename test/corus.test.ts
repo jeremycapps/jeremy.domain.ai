@@ -4,12 +4,16 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { stringify } from "yaml";
 import type {
   AgentProvider,
   CapabilityReduction,
   CapabilityValidation,
   Context,
   ContextualizeInput,
+  FailureAnalysis,
+  FailureAnalysisInput,
+  HandoffFailure,
   ProviderResult,
   ReduceCapabilitiesInput,
   ValidateCapabilitiesInput
@@ -17,7 +21,9 @@ import type {
 import { createServer } from "../src/server.js";
 import { evaluateCapabilityRun, classifyHallucinations, runProphetFixtureEvaluation } from "../src/lib/corusEvaluation.js";
 import { runCapabilityAnalysis, structuredProviderError } from "../src/lib/corusOrchestrator.js";
+import { resumeFailureReroutingFromCheckpoint } from "../src/lib/corusCheckpointResume.js";
 import { validateProjectionNoInvention } from "../src/lib/corusProjection.js";
+import { classifyProviderFailure } from "../src/lib/providerFailureClassification.js";
 import { providerReadiness } from "../src/providers/liveProviders.js";
 import {
   MockCapabilityReductionProvider,
@@ -127,6 +133,112 @@ class FailingContextualizer implements AgentProvider<ContextualizeInput, Context
   async execute(): Promise<ProviderResult<Context>> {
     throw new ProviderExecutionError("google", "Gemini failed without exposing authorization headers.");
   }
+}
+
+class ForbiddenContextualizer implements AgentProvider<ContextualizeInput, Context> {
+  public calls = 0;
+  async execute(): Promise<ProviderResult<Context>> {
+    this.calls += 1;
+    throw new Error("Checkpoint resume must not call Gemini contextualization.");
+  }
+}
+
+class CheckpointFailureAnalysisProvider implements AgentProvider<FailureAnalysisInput, FailureAnalysis> {
+  public calls: FailureAnalysisInput[] = [];
+  constructor(private readonly mode: "success" | "rate_limit" = "success") {}
+  async execute(input: FailureAnalysisInput): Promise<ProviderResult<FailureAnalysis>> {
+    this.calls.push(input);
+    if (this.mode === "rate_limit") {
+      throw new ProviderExecutionError("openai", "OpenAI failure analysis failed with HTTP 429.", {
+        error: { message: "Rate limit reached for model gpt-4.1.", type: "rate_limit_error" }
+      });
+    }
+    return providerResult(
+      {
+        status: "correctable",
+        failed_stage: "capability_reduction",
+        failure_type: "schema_validation",
+        diagnosis: "The malformed reduction omitted required capability ids.",
+        corrections: [
+          {
+            field: "capabilities[].id",
+            instruction: "Add stable string ids to every capability.",
+            reason: "The capability schema requires ids."
+          }
+        ],
+        retry_stage: "capability_reduction",
+        architecture_change_required: false,
+        confidence: "high"
+      },
+      "openai",
+      "mock-openai",
+      "failure-analysis.openai.v1"
+    );
+  }
+}
+
+class CheckpointRecoveryReductionProvider implements AgentProvider<ReduceCapabilitiesInput, CapabilityReduction> {
+  public calls: ReduceCapabilitiesInput[] = [];
+  async execute(input: ReduceCapabilitiesInput): Promise<ProviderResult<CapabilityReduction>> {
+    this.calls.push(input);
+    assert.ok(input.failure_analysis);
+    assert.ok(input.prior_raw_output);
+    return providerResult(
+      {
+        reducer: "capabilities",
+        inputs: { subject: input.contexts.subject.id, target: input.contexts.target.id },
+        capabilities: [
+          {
+            id: "cap_recovered",
+            requirement_ref: "requirement_product_execution",
+            statement: "Recovered product execution capability.",
+            evidence_refs: ["evidence_product_execution"],
+            support: "supported",
+            confidence: "high",
+            generated_by: { provider: "anthropic", model: "mock-claude", prompt_version: "reduce.anthropic.recovery.v1" }
+          }
+        ]
+      },
+      "anthropic",
+      "mock-claude",
+      "reduce.anthropic.recovery.v1"
+    );
+  }
+}
+
+async function writeCheckpoint(root: string, runId = "checkpoint-run", openAiError: unknown = { message: "OpenAI failure analysis failed with HTTP 429." }) {
+  const outputDir = path.join(root, "outputs", runId);
+  await fs.mkdir(outputDir, { recursive: true });
+  const contextualizer = new MockContextualizationProvider();
+  const subjectContext = (await contextualizer.execute({ source: source("subject"), kind: "subject", position: "subject", input_ref: "subject" })).output;
+  const targetContext = (await contextualizer.execute({ source: source("target"), kind: "target", position: "target", input_ref: "target" })).output;
+  const rawAttempt = { reducer: "capabilities", inputs: { subject: subjectContext.id, target: targetContext.id }, capabilities: [{ statement: "Missing id." }] };
+  const handoffFailure: HandoffFailure = {
+    id: "handoff-1",
+    run_id: runId,
+    stage: "capability_reduction",
+    provider: "anthropic",
+    attempt: 1,
+    failure_type: "schema_validation",
+    message: "Each capability must include string id.",
+    expected_schema_ref: "corus.capability_reduction.v1",
+    raw_output_ref: `outputs/${runId}/raw-02-capability-reduction-attempt-1.json`,
+    subject_context_ref: `outputs/${runId}/01-subject-context.yaml`,
+    target_context_ref: `outputs/${runId}/01-target-context.yaml`,
+    created_at: new Date().toISOString()
+  };
+  await fs.writeFile(path.join(outputDir, "01-subject-context.yaml"), stringify({ context: subjectContext }), "utf8");
+  await fs.writeFile(path.join(outputDir, "01-target-context.yaml"), stringify({ context: targetContext }), "utf8");
+  await fs.writeFile(path.join(outputDir, "raw-02-capability-reduction-attempt-1.json"), `${JSON.stringify(rawAttempt, null, 2)}\n`, "utf8");
+  await fs.writeFile(path.join(outputDir, "02-capability-reduction-attempt-1-error.yaml"), stringify({ handoff_failure: handoffFailure }), "utf8");
+  await fs.writeFile(path.join(outputDir, "error-03-openai-failure-analysis-provider-error.yaml"), stringify(openAiError), "utf8");
+  await fs.mkdir(path.join(root, "test", "fixtures", "prophet"), { recursive: true });
+  await fs.writeFile(
+    path.join(root, "test", "fixtures", "prophet", "jeremy_prophet_senior_product_manager_capabilities.yaml"),
+    stringify({ capabilities: [{ id: "baseline_execution", label: "Product execution", definition: "Recovered product execution capability." }] }),
+    "utf8"
+  );
+  return { outputDir, runId };
 }
 
 test("both subject and target load through the same Context shape", async () => {
@@ -394,6 +506,82 @@ test("schema-valid retry proceeds to normal semantic validation with distinct re
   assert.ok(run.generation_records.some((record) => record.type === "projection"));
   await fs.access(path.join(root, run.artifact_dir, "05-semantic-validation.yaml"));
   await fs.access(path.join(root, run.artifact_dir, "06-projection.md"));
+});
+
+test("checkpoint resume skips Gemini and initial Claude while retrying only OpenAI failure analysis", async () => {
+  const root = await tempRoot();
+  const { outputDir, runId } = await writeCheckpoint(root);
+  const priorRaw = await fs.readFile(path.join(outputDir, "raw-02-capability-reduction-attempt-1.json"), "utf8");
+  const contextualizer = new ForbiddenContextualizer();
+  const failureAnalyzer = new CheckpointFailureAnalysisProvider();
+  const reducer = new CheckpointRecoveryReductionProvider();
+  const validator = new MockValidationProvider({
+    status: "passed",
+    findings: [],
+    validated_capability_ids: ["cap_recovered"],
+    rejected_capability_ids: []
+  });
+
+  const result = await resumeFailureReroutingFromCheckpoint(runId, {
+    root,
+    providers: { failureAnalyzer, reducer, validator }
+  });
+
+  assert.equal(result.status, "passed");
+  assert.equal(result.provider_failure_classification, "transient_rate_limit");
+  assert.equal(contextualizer.calls, 0);
+  assert.equal(failureAnalyzer.calls.length, 1);
+  assert.equal(reducer.calls.length, 1);
+  assert.equal(reducer.calls[0].failure_analysis?.status, "correctable");
+  assert.equal(reducer.calls[0].revision_findings, undefined);
+  assert.equal(await fs.readFile(path.join(outputDir, "raw-02-capability-reduction-attempt-1.json"), "utf8"), priorRaw);
+  await fs.access(path.join(outputDir, "03-openai-failure-analysis-retry.yaml"));
+  await fs.access(path.join(outputDir, "04-capabilities-recovered.yaml"));
+  await fs.access(path.join(outputDir, "05-semantic-validation.yaml"));
+  await fs.access(path.join(outputDir, "06-projection.md"));
+  await fs.access(path.join(outputDir, "07-evaluation.yaml"));
+});
+
+test("checkpoint resume distinguishes quota failures and stops for user action", async () => {
+  const root = await tempRoot();
+  const { runId } = await writeCheckpoint(root, "quota-run", { error: { message: "insufficient_quota: billing credits exhausted" } });
+  const failureAnalyzer = new CheckpointFailureAnalysisProvider();
+  const result = await resumeFailureReroutingFromCheckpoint(runId, {
+    root,
+    providers: {
+      failureAnalyzer,
+      reducer: new CheckpointRecoveryReductionProvider(),
+      validator: new MockValidationProvider()
+    }
+  });
+
+  assert.equal(classifyProviderFailure({ error: { message: "insufficient_quota: billing credits exhausted" } }), "quota_or_billing");
+  assert.equal(result.status, "user_action_required");
+  assert.equal(result.provider_failure_classification, "quota_or_billing");
+  assert.equal(failureAnalyzer.calls.length, 0);
+});
+
+test("checkpoint resume never exceeds one OpenAI provider retry after another 429", async () => {
+  const root = await tempRoot();
+  const { outputDir, runId } = await writeCheckpoint(root, "repeat-rate-limit-run");
+  const failureAnalyzer = new CheckpointFailureAnalysisProvider("rate_limit");
+  const reducer = new CheckpointRecoveryReductionProvider();
+
+  const result = await resumeFailureReroutingFromCheckpoint(runId, {
+    root,
+    providers: {
+      failureAnalyzer,
+      reducer,
+      validator: new MockValidationProvider()
+    }
+  });
+
+  assert.equal(result.status, "provider_unavailable");
+  assert.equal(result.provider_failure_classification, "model_rate_limit");
+  assert.equal(failureAnalyzer.calls.length, 1);
+  assert.equal(reducer.calls.length, 0);
+  await fs.access(path.join(outputDir, "03-openai-failure-analysis-retry-error.yaml"));
+  await fs.access(path.join(outputDir, "generation-records.json"));
 });
 
 test("provider failures return structured errors without secrets", async () => {
