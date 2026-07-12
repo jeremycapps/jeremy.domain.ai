@@ -25,7 +25,7 @@ import { resumeFailureReroutingFromCheckpoint } from "../src/lib/corusCheckpoint
 import { validateProjectionNoInvention } from "../src/lib/corusProjection.js";
 import { classifyProviderFailure } from "../src/lib/providerFailureClassification.js";
 import { AnthropicCapabilityReductionProvider, capabilityReductionJsonSchema, providerReadiness } from "../src/providers/liveProviders.js";
-import { parseJsonObject, textFromOpenAIResponse } from "../src/providers/providerUtils.js";
+import { metricsFromUsage, parseJsonObject, textFromOpenAIResponse } from "../src/providers/providerUtils.js";
 import {
   MockCapabilityReductionProvider,
   MockContextualizationProvider,
@@ -69,7 +69,7 @@ function source(kind: "subject" | "target") {
 }
 
 function metrics() {
-  return { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 1 };
+  return { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 1, measurement_source: "measured" as const };
 }
 
 function providerResult<T>(output: T, provider = "test", model = "test-model", prompt = "test.v1"): ProviderResult<T> {
@@ -144,7 +144,7 @@ class ThrowingValidationProvider implements AgentProvider<ValidateCapabilitiesIn
       model: "mock-openai",
       prompt_version: "validate.openai.v1",
       schema_version: "corus.validation.v1",
-      metrics: { input_tokens: 7, output_tokens: 11, estimated_cost_usd: null, latency_ms: 13 }
+      metrics: { input_tokens: 7, output_tokens: 11, estimated_cost_usd: null, latency_ms: 13, measurement_source: "measured" }
     });
   }
 }
@@ -699,9 +699,9 @@ test("generation records survive validation parser failure", async () => {
   }
   assert.ok(caught instanceof ProviderExecutionError);
   const runDir = await onlyRunDir(root);
-  const records = JSON.parse(await fs.readFile(path.join(runDir, "generation-records.json"), "utf8")) as Array<{ type: string; validation_status: string; metrics: { input_tokens: number | null; latency_ms: number } }>;
+  const records = JSON.parse(await fs.readFile(path.join(runDir, "generation-records.json"), "utf8")) as Array<{ type: string; validation_status: string; metrics: { input_tokens: number | null; latency_ms: number | null; measurement_source: string } }>;
   assert.ok(records.some((record) => record.type === "capability_validation" && record.validation_status === "error"));
-  assert.ok(records.some((record) => record.type === "capability_validation" && record.metrics.input_tokens === 7 && record.metrics.latency_ms === 13));
+  assert.ok(records.some((record) => record.type === "capability_validation" && record.metrics.input_tokens === 7 && record.metrics.latency_ms === 13 && record.metrics.measurement_source === "measured"));
 });
 
 test("generation records survive validation validator failure", async () => {
@@ -923,6 +923,66 @@ test("efficiency metrics do not substitute for quality scores", async () => {
   const report = evaluateCapabilityRun({ run, fixture: "unit", baselineRef: "baseline.yaml", baseline: { capabilities: [] } });
   assert.equal(typeof report.evaluation.quality.requirement_coverage, "number");
   assert.equal(typeof report.evaluation.efficiency.model_calls, "number");
+});
+
+test("measured provider metrics include latency measurement source", () => {
+  const metrics = metricsFromUsage(Date.now() - 5, { input_tokens: 1, output_tokens: 2 });
+  assert.equal(typeof metrics.latency_ms, "number");
+  assert.equal(metrics.measurement_source, "measured");
+});
+
+test("unavailable latency remains null in evaluation reports", async () => {
+  const run = await runCapabilityAnalysis({ subject_source: source("subject"), target_source: source("target"), mode: "mocked" }, { root: await tempRoot() });
+  const unavailable = run.generation_records.map((record) => ({
+    ...record,
+    metrics: { ...record.metrics, latency_ms: null, measurement_source: "unavailable" as const }
+  }));
+  const report = evaluateCapabilityRun({
+    run: { ...run, generation_records: unavailable },
+    fixture: "unit",
+    baselineRef: "baseline.yaml",
+    baseline: { capabilities: [] }
+  });
+  assert.equal(report.evaluation.efficiency.latency_ms, null);
+  assert.equal(report.evaluation.efficiency.measurement_source, "unavailable");
+});
+
+test("available measured latency is summed without treating unavailable as zero", async () => {
+  const run = await runCapabilityAnalysis({ subject_source: source("subject"), target_source: source("target"), mode: "mocked" }, { root: await tempRoot() });
+  const mixed = run.generation_records.map((record, index) => ({
+    ...record,
+    metrics:
+      index === 0
+        ? { ...record.metrics, latency_ms: null, measurement_source: "unavailable" as const }
+        : { ...record.metrics, latency_ms: 5, measurement_source: "measured" as const }
+  }));
+  const report = evaluateCapabilityRun({
+    run: { ...run, generation_records: mixed },
+    fixture: "unit",
+    baselineRef: "baseline.yaml",
+    baseline: { capabilities: [] }
+  });
+  assert.equal(report.evaluation.efficiency.latency_ms, 5 * (mixed.length - 1));
+  assert.equal(report.evaluation.efficiency.measurement_source, "measured");
+});
+
+test("derived latency in any contributing record marks aggregate latency as derived", async () => {
+  const run = await runCapabilityAnalysis({ subject_source: source("subject"), target_source: source("target"), mode: "mocked" }, { root: await tempRoot() });
+  const mixed = run.generation_records.map((record, index) => ({
+    ...record,
+    metrics:
+      index === 0
+        ? { ...record.metrics, latency_ms: 9, measurement_source: "derived" as const }
+        : { ...record.metrics, latency_ms: 1, measurement_source: "measured" as const }
+  }));
+  const report = evaluateCapabilityRun({
+    run: { ...run, generation_records: mixed },
+    fixture: "unit",
+    baselineRef: "baseline.yaml",
+    baseline: { capabilities: [] }
+  });
+  assert.equal(report.evaluation.efficiency.latency_ms, 9 + mixed.length - 1);
+  assert.equal(report.evaluation.efficiency.measurement_source, "derived");
 });
 
 test("missing provider credentials produce an explicit readiness result", () => {

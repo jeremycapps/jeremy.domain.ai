@@ -5,7 +5,8 @@ export function emptyMetrics(startedAt: number): ProviderMetrics {
     input_tokens: null,
     output_tokens: null,
     estimated_cost_usd: null,
-    latency_ms: Date.now() - startedAt
+    latency_ms: Date.now() - startedAt,
+    measurement_source: "measured"
   };
 }
 

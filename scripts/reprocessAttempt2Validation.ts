@@ -12,10 +12,10 @@ function metricWithLatency(raw: unknown, usage: unknown): ProviderMetrics {
   if (raw && typeof raw === "object") {
     const record = raw as { created_at?: unknown; completed_at?: unknown };
     if (typeof record.created_at === "number" && typeof record.completed_at === "number") {
-      return { ...metrics, latency_ms: Math.max(0, (record.completed_at - record.created_at) * 1000) };
+      return { ...metrics, latency_ms: Math.max(0, (record.completed_at - record.created_at) * 1000), measurement_source: "derived" };
     }
   }
-  return { ...metrics, latency_ms: 0 };
+  return { ...metrics, latency_ms: null, measurement_source: "unavailable" };
 }
 
 async function readYaml<T>(filePath: string): Promise<T> {

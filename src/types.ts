@@ -213,7 +213,8 @@ export interface StageGenerationRecord {
     input_tokens: number | null;
     output_tokens: number | null;
     estimated_cost_usd: number | null;
-    latency_ms: number;
+    latency_ms: number | null;
+    measurement_source: "measured" | "derived" | "unavailable";
   };
 }
 
@@ -221,7 +222,8 @@ export interface ProviderMetrics {
   input_tokens: number | null;
   output_tokens: number | null;
   estimated_cost_usd: number | null;
-  latency_ms: number;
+  latency_ms: number | null;
+  measurement_source: "measured" | "derived" | "unavailable";
 }
 
 export interface ProviderResult<TOutput> {
@@ -369,7 +371,8 @@ export interface EvaluationReport {
       input_tokens: number | null;
       output_tokens: number | null;
       estimated_cost_usd: number | null;
-      latency_ms: number;
+      latency_ms: number | null;
+      measurement_source: "measured" | "derived" | "unavailable";
       human_interventions: number;
     };
     differences: Array<{ type: string; generated_id?: string; baseline_id?: string; message: string }>;

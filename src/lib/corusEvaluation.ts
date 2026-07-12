@@ -68,6 +68,18 @@ function sumMetric(records: StageGenerationRecord[], key: "input_tokens" | "outp
   return values.reduce((sum, value) => sum + value, 0);
 }
 
+function sumLatency(records: StageGenerationRecord[]): number | null {
+  const values = records.map((record) => record.metrics.latency_ms).filter((value): value is number => typeof value === "number");
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0);
+}
+
+function latencyMeasurementSource(records: StageGenerationRecord[]): "measured" | "derived" | "unavailable" {
+  const sources = records.filter((record) => typeof record.metrics.latency_ms === "number").map((record) => record.metrics.measurement_source);
+  if (sources.length === 0) return "unavailable";
+  return sources.every((source) => source === "measured") ? "measured" : "derived";
+}
+
 export function classifyHallucinations(input: {
   generated: CapabilityCandidate[];
   validation: CapabilityValidation;
@@ -199,7 +211,7 @@ export function evaluateCapabilityRun(input: {
     const baseline = baselineCapabilities.find((item) => item.id === baselineId);
     return baseline ? capability.confidence === baseline.alignment?.confidence || Boolean(baseline.alignment?.strength) : false;
   });
-  const latency = input.run.generation_records.reduce((sum, record) => sum + record.metrics.latency_ms, 0);
+  const latency = sumLatency(input.run.generation_records);
   const revisionCycles = input.run.generation_records.filter(
     (record) => record.type === "capability_reduction" && record.validation_status === "revised"
   ).length;
@@ -239,6 +251,7 @@ export function evaluateCapabilityRun(input: {
         output_tokens: sumMetric(input.run.generation_records, "output_tokens"),
         estimated_cost_usd: sumMetric(input.run.generation_records, "estimated_cost_usd"),
         latency_ms: latency,
+        measurement_source: latencyMeasurementSource(input.run.generation_records),
         human_interventions: input.run.status === "architect_required" ? 1 : 0
       },
       differences,

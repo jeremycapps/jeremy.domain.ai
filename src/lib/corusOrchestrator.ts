@@ -86,7 +86,13 @@ async function executeProviderStage<T>(
           prompt_version: metadata?.prompt_version ?? checkpoint.prompt_version,
           schema_version: metadata?.schema_version ?? checkpoint.schema_version,
           validation_status: "error",
-          metrics: metadata?.metrics ?? { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0 }
+          metrics: metadata?.metrics ?? {
+            input_tokens: null,
+            output_tokens: null,
+            estimated_cost_usd: null,
+            latency_ms: null,
+            measurement_source: "unavailable"
+          }
         })
       );
       await writeGenerationRecords(outputDir, checkpoint.records);
@@ -302,7 +308,7 @@ export async function runCapabilityAnalysis(
         prompt_version: "reduce.anthropic.v1",
         schema_version: "corus.capabilities.v1",
         validation_status: "schema_invalid_attempt_1",
-        metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0 }
+        metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" }
       })
     );
 
@@ -339,7 +345,7 @@ export async function runCapabilityAnalysis(
           prompt_version: "failure-analysis.openai.v1",
           schema_version: "corus.failure_analysis.v1",
           validation_status: "error",
-          metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0 }
+          metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" }
         })
       );
       await writeGenerationRecords(outputDir, records);
@@ -429,7 +435,7 @@ export async function runCapabilityAnalysis(
           prompt_version: "reduce.anthropic.recovery.v1",
           schema_version: "corus.capabilities.v1",
           validation_status: "schema_invalid_attempt_2",
-          metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0 }
+          metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" }
         })
       );
       await writeGenerationRecords(outputDir, records);
@@ -657,7 +663,7 @@ export async function runCapabilityAnalysis(
       prompt_version: "projection.v1",
       schema_version: "corus.projection.v1",
       validation_status: validation.status,
-      metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0 }
+      metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0, measurement_source: "measured" }
     })
   );
   await writeGenerationRecords(outputDir, records);

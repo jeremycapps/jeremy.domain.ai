@@ -92,7 +92,7 @@ async function appendErrorRecord(input: {
       prompt_version: "failure-analysis.openai.v1",
       schema_version: "corus.failure_analysis.v1",
       validation_status: `provider_unavailable:${input.classification}`,
-      metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0 }
+      metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" }
     })
   );
 }
@@ -148,7 +148,7 @@ export async function resumeFailureReroutingFromCheckpoint(
         prompt_version: "failure-analysis.openai.v1",
         schema_version: "corus.failure_analysis.v1",
         validation_status: "user_action_required:quota_or_billing",
-        metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0 }
+        metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" }
       })
     );
     await writeGenerationRecords(outputDir, records);
@@ -166,7 +166,7 @@ export async function resumeFailureReroutingFromCheckpoint(
         prompt_version: "failure-analysis.openai.v1",
         schema_version: "corus.failure_analysis.v1",
         validation_status: "provider_unavailable:unknown_provider_failure",
-        metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0 }
+        metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" }
       })
     );
     await writeGenerationRecords(outputDir, records);
@@ -276,7 +276,7 @@ export async function resumeFailureReroutingFromCheckpoint(
         prompt_version: "reduce.anthropic.recovery.v1",
         schema_version: "corus.capabilities.v1",
         validation_status: "schema_invalid_attempt_2",
-        metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0 }
+        metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" }
       })
     );
     await writeGenerationRecords(outputDir, records);
@@ -351,7 +351,7 @@ export async function resumeFailureReroutingFromCheckpoint(
         prompt_version: "projection.v1",
         schema_version: "corus.projection.v1",
         validation_status: validation.status,
-        metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0 }
+        metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0, measurement_source: "measured" }
       })
     );
   }

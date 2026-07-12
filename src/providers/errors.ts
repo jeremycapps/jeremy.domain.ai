@@ -21,7 +21,8 @@ export class ProviderExecutionError extends Error {
         input_tokens: number | null;
         output_tokens: number | null;
         estimated_cost_usd: number | null;
-        latency_ms: number;
+        latency_ms: number | null;
+        measurement_source: "measured" | "derived" | "unavailable";
       };
     }
   ) {
