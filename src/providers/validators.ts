@@ -48,6 +48,34 @@ export function validateReductionOutput(value: unknown, provider: string): Capab
   return value as unknown as CapabilityReduction;
 }
 
+function contextIds(context: Context): Set<string> {
+  const contexts = context.content.contexts;
+  if (!Array.isArray(contexts)) return new Set();
+  return new Set(
+    contexts
+      .map((entry) => (entry && typeof entry === "object" ? (entry as { id?: unknown }).id : undefined))
+      .filter((id): id is string => typeof id === "string")
+  );
+}
+
+export function validateReductionReferences(value: CapabilityReduction, contexts: { subject: Context; target: Context }, provider: string): CapabilityReduction {
+  const subjectIds = contextIds(contexts.subject);
+  const targetIds = contextIds(contexts.target);
+
+  for (const capability of value.capabilities) {
+    if (!targetIds.has(capability.requirement_ref)) {
+      throw new ProviderExecutionError(provider, `Capability ${capability.id} requirement_ref must match a target context id.`);
+    }
+    for (const ref of capability.evidence_refs) {
+      if (!subjectIds.has(ref)) {
+        throw new ProviderExecutionError(provider, `Capability ${capability.id} evidence_ref must match a subject context id.`);
+      }
+    }
+  }
+
+  return value;
+}
+
 export function validateCapabilityValidationOutput(value: unknown, provider: string): CapabilityValidation {
   if (!isObject(value)) throw new ProviderExecutionError(provider, "Structured validation output must be an object.");
   if (!validationStatuses.has(String(value.status))) throw new ProviderExecutionError(provider, "Validation output has invalid status.");

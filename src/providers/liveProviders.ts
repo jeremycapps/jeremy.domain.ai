@@ -15,7 +15,13 @@ import type {
 import { normalizeContext } from "../lib/corusContext.js";
 import { ProviderConfigurationError, ProviderExecutionError } from "./errors.js";
 import { metricsFromUsage, parseJsonObject } from "./providerUtils.js";
-import { validateCapabilityValidationOutput, validateContextOutput, validateFailureAnalysisOutput, validateReductionOutput } from "./validators.js";
+import {
+  validateCapabilityValidationOutput,
+  validateContextOutput,
+  validateFailureAnalysisOutput,
+  validateReductionOutput,
+  validateReductionReferences
+} from "./validators.js";
 
 function requireKey(name: string, provider: string): string {
   const value = process.env[name];
@@ -214,7 +220,7 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
           })
         ].join("\n")
       : [
-          "Return JSON only: { reducer:'capabilities', inputs:{subject,target}, capabilities:[...] }.",
+          "Produce a CapabilityReduction object using the configured structured output schema.",
           "Each capability must map one target requirement to subject evidence refs.",
           "Do not validate your own claims.",
           JSON.stringify(input)
@@ -229,6 +235,12 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
       body: JSON.stringify({
         model: this.model,
         max_tokens: 4000,
+        output_config: {
+          format: {
+            type: "json_schema",
+            schema: capabilityReductionJsonSchema()
+          }
+        },
         messages: [
           {
             role: "user",
@@ -242,7 +254,7 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
     if (!response.ok) throw new ProviderExecutionError("anthropic", `Anthropic reduction failed with HTTP ${response.status}.`, raw);
     let output;
     try {
-      output = validateReductionOutput(parseJsonObject(textFromAnthropicResponse(raw)), "anthropic");
+      output = validateReductionReferences(validateReductionOutput(parseJsonObject(textFromAnthropicResponse(raw)), "anthropic"), input.contexts, "anthropic");
     } catch (error) {
       throw new ProviderExecutionError("anthropic", error instanceof Error ? error.message : "Anthropic returned invalid structured output.", raw);
     }
@@ -323,27 +335,53 @@ export class OpenAIFailureAnalysisProvider implements AgentProvider<FailureAnaly
   }
 }
 
-export function expectedCapabilityReductionSchema(): Record<string, unknown> {
+export function capabilityReductionJsonSchema(): Record<string, unknown> {
   return {
-    reducer: "capabilities",
-    inputs: {
-      subject: "string",
-      target: "string"
-    },
-    capabilities: [
-      {
-        id: "string",
-        requirement_ref: "string",
-        statement: "string",
-        evidence_refs: ["string"],
-        support: "supported | adjacent | unsupported | unknown",
-        confidence: "high | medium | low",
-        generated_by: {
-          provider: "string",
-          model: "string",
-          prompt_version: "string"
+    type: "object",
+    additionalProperties: false,
+    required: ["reducer", "inputs", "capabilities"],
+    properties: {
+      reducer: { const: "capabilities" },
+      inputs: {
+        type: "object",
+        additionalProperties: false,
+        required: ["subject", "target"],
+        properties: {
+          subject: { type: "string" },
+          target: { type: "string" }
+        }
+      },
+      capabilities: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id", "requirement_ref", "statement", "evidence_refs", "support", "confidence", "generated_by"],
+          properties: {
+            id: { type: "string" },
+            requirement_ref: { type: "string" },
+            statement: { type: "string" },
+            evidence_refs: {
+              type: "array",
+              items: { type: "string" }
+            },
+            support: { enum: ["supported", "adjacent", "unsupported", "unknown"] },
+            confidence: { enum: ["high", "medium", "low"] },
+            generated_by: {
+              type: "object",
+              additionalProperties: false,
+              required: ["provider", "model", "prompt_version"],
+              properties: {
+                provider: { type: "string" },
+                model: { type: "string" },
+                prompt_version: { type: "string" }
+              }
+            }
+          }
         }
       }
-    ]
+    }
   };
 }
+
+export const expectedCapabilityReductionSchema = capabilityReductionJsonSchema;

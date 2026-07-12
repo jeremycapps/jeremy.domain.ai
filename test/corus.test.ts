@@ -24,7 +24,7 @@ import { runCapabilityAnalysis, structuredProviderError } from "../src/lib/corus
 import { resumeFailureReroutingFromCheckpoint } from "../src/lib/corusCheckpointResume.js";
 import { validateProjectionNoInvention } from "../src/lib/corusProjection.js";
 import { classifyProviderFailure } from "../src/lib/providerFailureClassification.js";
-import { providerReadiness } from "../src/providers/liveProviders.js";
+import { AnthropicCapabilityReductionProvider, capabilityReductionJsonSchema, providerReadiness } from "../src/providers/liveProviders.js";
 import {
   MockCapabilityReductionProvider,
   MockContextualizationProvider,
@@ -33,6 +33,7 @@ import {
   MockValidationProvider
 } from "../src/providers/mockProviders.js";
 import { ProviderExecutionError } from "../src/providers/errors.js";
+import { validateReductionReferences } from "../src/providers/validators.js";
 
 async function tempRoot() {
   return fs.mkdtemp(path.join(os.tmpdir(), "corus-test-"));
@@ -506,6 +507,94 @@ test("schema-valid retry proceeds to normal semantic validation with distinct re
   assert.ok(run.generation_records.some((record) => record.type === "projection"));
   await fs.access(path.join(root, run.artifact_dir, "05-semantic-validation.yaml"));
   await fs.access(path.join(root, run.artifact_dir, "06-projection.md"));
+});
+
+test("Anthropic reduction request includes the CapabilityReduction structured-output schema", async () => {
+  const previousKey = process.env.ANTHROPIC_API_KEY;
+  const previousFetch = globalThis.fetch;
+  process.env.ANTHROPIC_API_KEY = "test-key";
+  let requestBody: Record<string, unknown> | undefined;
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    requestBody = JSON.parse(String(init?.body));
+    return {
+      ok: true,
+      json: async () => ({
+        content: [
+          {
+            text: JSON.stringify({
+              reducer: "capabilities",
+              inputs: { subject: "subject_subject", target: "target_target" },
+              capabilities: [
+                {
+                  id: "cap_structured",
+                  requirement_ref: "requirement_product_execution",
+                  statement: "Structured capability.",
+                  evidence_refs: ["evidence_product_execution"],
+                  support: "supported",
+                  confidence: "high",
+                  generated_by: { provider: "anthropic", model: "mock", prompt_version: "reduce.anthropic.v1" }
+                }
+              ]
+            })
+          }
+        ],
+        usage: { input_tokens: 10, output_tokens: 20 }
+      })
+    } as Response;
+  }) as typeof fetch;
+
+  try {
+    const contextualizer = new MockContextualizationProvider();
+    const subjectContext = (await contextualizer.execute({ source: source("subject"), kind: "subject", position: "subject", input_ref: "subject" })).output;
+    const targetContext = (await contextualizer.execute({ source: source("target"), kind: "target", position: "target", input_ref: "target" })).output;
+    await new AnthropicCapabilityReductionProvider().execute({ contexts: { subject: subjectContext, target: targetContext } });
+
+    const format = ((requestBody?.output_config as { format?: unknown })?.format ?? {}) as { type?: unknown; schema?: Record<string, unknown> };
+    const schema = format.schema as { properties: Record<string, unknown> };
+    const capabilities = schema.properties.capabilities as { items: { required: string[]; properties: Record<string, unknown> } };
+    assert.equal(format.type, "json_schema");
+    assert.deepEqual(schema, capabilityReductionJsonSchema());
+    assert.equal((schema.properties.reducer as { const?: unknown }).const, "capabilities");
+    assert.ok(capabilities.items.required.includes("requirement_ref"));
+    assert.ok(capabilities.items.required.includes("evidence_refs"));
+  } finally {
+    if (previousKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = previousKey;
+    globalThis.fetch = previousFetch;
+  }
+});
+
+test("CapabilityReduction schema requires requirement_ref and evidence_refs", () => {
+  const schema = capabilityReductionJsonSchema() as { properties: Record<string, unknown> };
+  const capabilities = schema.properties.capabilities as { items: { required: string[] } };
+  assert.ok(capabilities.items.required.includes("requirement_ref"));
+  assert.ok(capabilities.items.required.includes("evidence_refs"));
+});
+
+test("deterministic reduction validation rejects structurally valid invalid context references", async () => {
+  const contextualizer = new MockContextualizationProvider();
+  const subjectContext = (await contextualizer.execute({ source: source("subject"), kind: "subject", position: "subject", input_ref: "subject" })).output;
+  const targetContext = (await contextualizer.execute({ source: source("target"), kind: "target", position: "target", input_ref: "target" })).output;
+  const structurallyValidReduction: CapabilityReduction = {
+    reducer: "capabilities",
+    inputs: { subject: subjectContext.id, target: targetContext.id },
+    capabilities: [
+      {
+        id: "cap_bad_refs",
+        requirement_ref: "missing_requirement",
+        statement: "Structurally valid but context-invalid.",
+        evidence_refs: ["missing_evidence"],
+        support: "supported",
+        confidence: "high",
+        generated_by: { provider: "anthropic", model: "mock", prompt_version: "reduce.anthropic.v1" }
+      }
+    ]
+  };
+
+  assert.throws(
+    () => validateReductionReferences(structurallyValidReduction, { subject: subjectContext, target: targetContext }, "anthropic"),
+    /requirement_ref must match a target context id/
+  );
 });
 
 test("checkpoint resume skips Gemini and initial Claude while retrying only OpenAI failure analysis", async () => {
