@@ -1,0 +1,106 @@
+[
+  {
+    "id": "c5b1e9e0-14af-4f9d-957a-53b515afadc8",
+    "created_at": "2026-07-12T21:15:52.732Z",
+    "type": "contextualization",
+    "input_refs": [
+      "test/fixtures/prophet/jeremy_corus.yaml"
+    ],
+    "output_ref": "outputs/9eac6f94-ea8b-4252-88eb-0957978249a8/01-subject-context.yaml",
+    "provider": "google",
+    "model": "mock-gemini-contextualizer",
+    "prompt_version": "contextualize.mock.v1",
+    "schema_version": "corus.context.v1",
+    "validation_status": "created",
+    "metrics": {
+      "input_tokens": null,
+      "output_tokens": null,
+      "estimated_cost_usd": null,
+      "latency_ms": 0
+    }
+  },
+  {
+    "id": "dbded003-d172-4642-a027-238ad3a5e5e0",
+    "created_at": "2026-07-12T21:15:52.737Z",
+    "type": "contextualization",
+    "input_refs": [
+      "test/fixtures/prophet/prophet_senior_product_manager.yaml"
+    ],
+    "output_ref": "outputs/9eac6f94-ea8b-4252-88eb-0957978249a8/01-target-context.yaml",
+    "provider": "google",
+    "model": "mock-gemini-contextualizer",
+    "prompt_version": "contextualize.mock.v1",
+    "schema_version": "corus.context.v1",
+    "validation_status": "created",
+    "metrics": {
+      "input_tokens": null,
+      "output_tokens": null,
+      "estimated_cost_usd": null,
+      "latency_ms": 0
+    }
+  },
+  {
+    "id": "3eb14014-7c9f-4df2-8813-b92420634a29",
+    "created_at": "2026-07-12T21:15:52.737Z",
+    "type": "capability_reduction",
+    "input_refs": [
+      "outputs/9eac6f94-ea8b-4252-88eb-0957978249a8/01-subject-context.yaml",
+      "outputs/9eac6f94-ea8b-4252-88eb-0957978249a8/01-target-context.yaml"
+    ],
+    "output_ref": "outputs/9eac6f94-ea8b-4252-88eb-0957978249a8/02-capabilities.yaml",
+    "provider": "anthropic",
+    "model": "mock-claude-reducer",
+    "prompt_version": "reduce.mock.v1",
+    "schema_version": "corus.capabilities.v1",
+    "validation_status": "unvalidated",
+    "metrics": {
+      "input_tokens": null,
+      "output_tokens": null,
+      "estimated_cost_usd": null,
+      "latency_ms": 0
+    }
+  },
+  {
+    "id": "6e69b2f0-5565-468d-a657-2a4979b246a4",
+    "created_at": "2026-07-12T21:15:52.737Z",
+    "type": "capability_validation",
+    "input_refs": [
+      "outputs/9eac6f94-ea8b-4252-88eb-0957978249a8/02-capabilities.yaml",
+      "outputs/9eac6f94-ea8b-4252-88eb-0957978249a8/01-subject-context.yaml",
+      "outputs/9eac6f94-ea8b-4252-88eb-0957978249a8/01-target-context.yaml"
+    ],
+    "output_ref": "outputs/9eac6f94-ea8b-4252-88eb-0957978249a8/03-validation.yaml",
+    "provider": "openai",
+    "model": "mock-openai-validator",
+    "prompt_version": "validate.mock.v1",
+    "schema_version": "corus.validation.v1",
+    "validation_status": "passed",
+    "metrics": {
+      "input_tokens": null,
+      "output_tokens": null,
+      "estimated_cost_usd": null,
+      "latency_ms": 0
+    }
+  },
+  {
+    "id": "53b3be3c-cf0b-4dcc-ad37-4fc2ca49e310",
+    "created_at": "2026-07-12T21:15:52.737Z",
+    "type": "projection",
+    "input_refs": [
+      "outputs/9eac6f94-ea8b-4252-88eb-0957978249a8/03-validation.yaml",
+      "outputs/9eac6f94-ea8b-4252-88eb-0957978249a8/02-capabilities.yaml"
+    ],
+    "output_ref": "outputs/9eac6f94-ea8b-4252-88eb-0957978249a8/04-projection.md",
+    "provider": "codex",
+    "model": "deterministic-projection",
+    "prompt_version": "projection.v1",
+    "schema_version": "corus.projection.v1",
+    "validation_status": "passed",
+    "metrics": {
+      "input_tokens": null,
+      "output_tokens": null,
+      "estimated_cost_usd": null,
+      "latency_ms": 0
+    }
+  }
+]

@@ -1,0 +1,66 @@
+evaluation:
+  fixture: prophet
+  baseline_ref: test/fixtures/prophet/jeremy_prophet_senior_product_manager_capabilities.yaml
+  quality:
+    requirement_coverage: 0.029411764705882353
+    capability_recall: 0
+    capability_precision: 0
+    evidence_accuracy: 1
+    classification_agreement: 0
+    unsupported_claims: 0
+    schema_valid: true
+    projection_fidelity: 1
+  efficiency:
+    model_calls: 4
+    revision_cycles: 0
+    input_tokens: null
+    output_tokens: null
+    estimated_cost_usd: null
+    latency_ms: 0
+    human_interventions: 0
+  differences:
+    - type: supported_new_discovery
+      generated_id: cap_product_execution
+      message: Generated supported capability is absent from baseline and should be
+        reviewed as a possible improvement.
+    - type: missed_baseline_capability
+      baseline_id: product_execution_and_delivery
+      message: Baseline capability was not reproduced by the generated output.
+    - type: missed_baseline_capability
+      baseline_id: technical_product_judgment
+      message: Baseline capability was not reproduced by the generated output.
+    - type: missed_baseline_capability
+      baseline_id: hands_on_technical_prototyping
+      message: Baseline capability was not reproduced by the generated output.
+    - type: missed_baseline_capability
+      baseline_id: ai_evaluation_and_release_quality
+      message: Baseline capability was not reproduced by the generated output.
+    - type: missed_baseline_capability
+      baseline_id: observability_and_continuous_improvement
+      message: Baseline capability was not reproduced by the generated output.
+    - type: missed_baseline_capability
+      baseline_id: agent_and_workflow_system_design
+      message: Baseline capability was not reproduced by the generated output.
+    - type: missed_baseline_capability
+      baseline_id: enterprise_integration_and_security
+      message: Baseline capability was not reproduced by the generated output.
+    - type: missed_baseline_capability
+      baseline_id: adoption_enablement_and_value_tracking
+      message: Baseline capability was not reproduced by the generated output.
+    - type: missed_baseline_capability
+      baseline_id: cross_functional_and_partner_coordination
+      message: Baseline capability was not reproduced by the generated output.
+    - type: missed_baseline_capability
+      baseline_id: technical_business_communication
+      message: Baseline capability was not reproduced by the generated output.
+    - type: missed_baseline_capability
+      baseline_id: client_application_and_consulting_delivery
+      message: Baseline capability was not reproduced by the generated output.
+    - type: missed_baseline_capability
+      baseline_id: product_experience_and_ux_quality
+      message: Baseline capability was not reproduced by the generated output.
+  hallucinations: []
+  verdict: worse
+  measurement_notes:
+    - Token and cost metrics are null when providers do not return usage
+      metadata.

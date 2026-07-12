@@ -1,0 +1,6 @@
+validation:
+  status: passed
+  findings: []
+  validated_capability_ids:
+    - cap_product_execution
+  rejected_capability_ids: []

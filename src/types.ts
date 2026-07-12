@@ -116,3 +116,210 @@ export interface ResumeResponse {
   validation_report: ValidationReport;
   generation_record: GenerationRecord;
 }
+
+export type CorusExecutionMode = "mocked" | "fixture" | "live";
+export type ContextPosition = "subject" | "target";
+export type CapabilitySupport = "supported" | "adjacent" | "unsupported" | "unknown";
+export type CapabilityConfidence = "high" | "medium" | "low";
+export type CapabilityValidationStatus = "passed" | "revise" | "architect_required" | "failed";
+export type ProjectionKind = "resume" | "capability_assessment";
+
+export interface ContextGenerationMetadata {
+  operation: "contextualize";
+  provider: string;
+  model: string;
+  prompt_version: string;
+  input_refs: string[];
+  schema_version: string;
+  created_at: string;
+}
+
+export interface Context {
+  id: string;
+  kind: string;
+  label: string;
+  sources: string[];
+  content: Record<string, unknown>;
+  generation: ContextGenerationMetadata;
+}
+
+export interface CapabilityCandidate {
+  id: string;
+  requirement_ref: string;
+  statement: string;
+  evidence_refs: string[];
+  support: CapabilitySupport;
+  confidence: CapabilityConfidence;
+  generated_by: {
+    provider: string;
+    model: string;
+    prompt_version: string;
+  };
+}
+
+export interface CapabilityReduction {
+  reducer: "capabilities";
+  inputs: {
+    subject: string;
+    target: string;
+  };
+  capabilities: CapabilityCandidate[];
+}
+
+export interface ValidationFinding {
+  capability_id?: string;
+  severity: "info" | "warning" | "error";
+  type:
+    | "unsupported_capability"
+    | "evidence_misattribution"
+    | "fabricated_requirement"
+    | "cross_context_leakage"
+    | "claim_exaggeration"
+    | "projection_invention"
+    | "fabricated_evidence_reference"
+    | "schema_error"
+    | "product_ambiguity"
+    | "correctable_content";
+  message: string;
+}
+
+export interface CapabilityValidation {
+  status: CapabilityValidationStatus;
+  findings: ValidationFinding[];
+  validated_capability_ids: string[];
+  rejected_capability_ids: string[];
+}
+
+export interface CapabilityProjection {
+  kind: ProjectionKind;
+  format: "markdown";
+  content: string;
+  capability_ids: string[];
+}
+
+export interface StageGenerationRecord {
+  id: string;
+  type: "contextualization" | "capability_reduction" | "capability_validation" | "projection";
+  created_at: string;
+  input_refs: string[];
+  output_ref: string;
+  provider: string;
+  model: string;
+  prompt_version: string;
+  schema_version: string;
+  validation_status: string;
+  metrics: {
+    input_tokens: number | null;
+    output_tokens: number | null;
+    estimated_cost_usd: number | null;
+    latency_ms: number;
+  };
+}
+
+export interface ProviderMetrics {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  estimated_cost_usd: number | null;
+  latency_ms: number;
+}
+
+export interface ProviderResult<TOutput> {
+  output: TOutput;
+  provider: string;
+  model: string;
+  prompt_version: string;
+  metrics: ProviderMetrics;
+}
+
+export interface AgentProvider<TInput, TOutput> {
+  execute(input: TInput): Promise<ProviderResult<TOutput>>;
+}
+
+export interface ContextualizeInput {
+  source: unknown;
+  kind: string;
+  position: ContextPosition;
+  input_ref: string;
+}
+
+export interface ReduceCapabilitiesInput {
+  contexts: {
+    subject: Context;
+    target: Context;
+  };
+  revision_findings?: ValidationFinding[];
+  previous_capabilities?: CapabilityCandidate[];
+}
+
+export interface ValidateCapabilitiesInput {
+  capabilities: CapabilityCandidate[];
+  contexts: {
+    subject: Context;
+    target: Context;
+  };
+}
+
+export interface CapabilityAnalysisRequest {
+  subject_source: unknown;
+  target_source: unknown;
+  projection?: ProjectionKind;
+  mode?: CorusExecutionMode;
+  run_label?: string;
+}
+
+export interface CapabilityAnalysisResponse {
+  run_id: string;
+  status: CapabilityValidationStatus;
+  mode: CorusExecutionMode;
+  contexts: {
+    subject: Context;
+    target: Context;
+  };
+  capabilities: CapabilityCandidate[];
+  validation: CapabilityValidation;
+  projection: CapabilityProjection | null;
+  generation_records: StageGenerationRecord[];
+  artifact_dir: string;
+  error?: {
+    message: string;
+    provider?: string;
+    stage?: string;
+  };
+}
+
+export interface ProviderReadiness {
+  mode: CorusExecutionMode;
+  ready: boolean;
+  missing_credentials: string[];
+  required_credentials: string[];
+}
+
+export interface EvaluationReport {
+  evaluation: {
+    fixture: string;
+    baseline_ref: string;
+    quality: {
+      requirement_coverage: number;
+      capability_recall: number;
+      capability_precision: number;
+      evidence_accuracy: number;
+      classification_agreement: number;
+      unsupported_claims: number;
+      schema_valid: boolean;
+      projection_fidelity: number;
+    };
+    efficiency: {
+      model_calls: number;
+      revision_cycles: number;
+      input_tokens: number | null;
+      output_tokens: number | null;
+      estimated_cost_usd: number | null;
+      latency_ms: number;
+      human_interventions: number;
+    };
+    differences: Array<{ type: string; generated_id?: string; baseline_id?: string; message: string }>;
+    hallucinations: Array<{ type: string; capability_id?: string; message: string }>;
+    verdict: "worse" | "equivalent" | "better_with_review" | "better";
+    measurement_notes: string[];
+  };
+}

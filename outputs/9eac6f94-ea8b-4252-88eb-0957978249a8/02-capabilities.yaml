@@ -1,0 +1,16 @@
+reducer: capabilities
+inputs:
+  subject: jeremy_capps
+  target: prophet_senior_product_manager_ai_foundry
+capabilities:
+  - id: cap_product_execution
+    requirement_ref: prophet_maia_product_execution
+    statement: Translate ambiguous product ambition into shipped, testable capability.
+    evidence_refs:
+      - jeremy_aroko_operational_source_of_truth
+    support: supported
+    confidence: high
+    generated_by:
+      provider: anthropic
+      model: mock-claude-reducer
+      prompt_version: reduce.mock.v1

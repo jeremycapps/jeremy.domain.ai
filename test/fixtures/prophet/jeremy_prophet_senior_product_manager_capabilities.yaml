@@ -1,0 +1,784 @@
+meta:
+  schema_version: corus.capabilities.v0.2
+  file_type: corus_capability_reduction
+  created_at: '2026-07-12'
+  updated_at: '2026-07-12'
+  status: full_job_source_reduction
+  subject_pair:
+    demonstrated_by: Jeremy Capps
+    requested_by: Prophet — Senior Product Manager, AI Foundry
+  source_files:
+  - file: jeremy_corus.yaml
+    direction: demonstrated
+    context_count: 16
+    source_schema_version: experiences.yaml v0.3
+  - file: prophet_senior_product_manager.yaml
+    direction: requested
+    context_count: 34
+    source_url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+    captured_at: '2026-07-12'
+reducer_prompt: Given two or more Corus files containing contexts arrays, reduce structurally similar context objects into
+  shared capabilities. Compare skill, outcome, relationship, and recipient while using origin only for provenance, transferability,
+  and situational constraints. A capability is a coordination object over context references; it does not belong inherently
+  to a person or a job. Preserve whether each context is demonstrated, requested, observed, or otherwise directed. Do not
+  group contexts solely because they share keywords. Group them only when they describe a meaningfully transferable way
+  of producing a class of outcomes for a class of recipients. Preserve exact job-description phrases as lexical requirements
+  and allow candidate-side language to vary only when the evidence supports the translation. Output capability groups, context
+  memberships, alignment strengths, lexical coverage, gaps, confidence, and constraints.
+reducer_policy:
+  grouping_fields:
+  - skill
+  - outcome
+  - relationship
+  - recipient
+  provenance_field: origin
+  capabilities_belong_to_neither_side: true
+  preserve_direction: true
+  preserve_exact_job_language: true
+  keyword_match_is_insufficient: true
+  resume_language_must_be_evidence_supported: true
+capabilities:
+- id: product_execution_and_delivery
+  label: Product Execution and Delivery
+  definition: Turns strategic direction into prioritized, accepted, shipped, and continuously improved product capability.
+  context_refs:
+  - jeremy_aroko_web_migration_direction
+  - jeremy_zocdoc_delivery_workflows
+  - jeremy_freelance_design_program_management
+  - jeremy_corus_python_workbench
+  - jeremy_corus_architecture_review_and_tradeoff_analysis
+  - prophet_maia_product_execution
+  - prophet_translate_strategy_to_adoption
+  - prophet_backlog_release_team_leadership
+  reduction:
+    shared_skill: Translate ambition or ambiguous requirements into roadmaps, bounded work, priorities, acceptance conditions,
+      and delivery structures.
+    shared_outcome_pattern: Work advances from unclear intent toward shipped or operational capability.
+    shared_relationship_pattern: Connects strategic intent to coordinated execution.
+    shared_recipient_pattern:
+    - product leadership
+    - delivery teams
+    - clients or internal users
+  memberships:
+    demonstrated:
+    - jeremy_aroko_web_migration_direction
+    - jeremy_zocdoc_delivery_workflows
+    - jeremy_freelance_design_program_management
+    - jeremy_corus_python_workbench
+    - jeremy_corus_architecture_review_and_tradeoff_analysis
+    requested:
+    - prophet_maia_product_execution
+    - prophet_translate_strategy_to_adoption
+    - prophet_backlog_release_team_leadership
+    observed: []
+  lexical_alignment:
+    exact_job_phrases:
+    - own the execution, delivery, and continuous improvement
+    - translate high-level ambition into shipped product capabilities
+    - own the product backlog and release cadence
+    supported_candidate_phrases:
+    - migration roadmaps
+    - 90-day program roadmap
+    - broke larger initiatives into smaller tickets
+    - execution steps, constraints, success criteria
+    missing_candidate_phrases:
+    - product backlog
+    risky_or_unsupported_phrases:
+    - Do not claim seven or more years of formal product-management title experience.
+  alignment:
+    strength: strong
+    transferability: high
+    confidence: high
+    gaps:
+    - Formal product-management tenure is weaker than the demonstrated execution pattern.
+  constraints:
+  - Differentiate demonstrated product execution from formal PM-title duration.
+- id: technical_product_judgment
+  label: Technical Product Judgment
+  definition: Evaluates feasibility, architecture, constraints, and tradeoffs to make defensible product decisions.
+  context_refs:
+  - jeremy_zocdoc_design_system_migrations
+  - jeremy_applied_software_api_workflows
+  - jeremy_genesco_legacy_modernization
+  - jeremy_corus_architecture_review_and_tradeoff_analysis
+  - jeremy_corus_validation_and_test_architecture
+  - prophet_product_judgment_and_acceptance
+  - prophet_ai_tradeoff_analysis
+  - prophet_qualifying_tradeoff_question
+  reduction:
+    shared_skill: Evaluate implementation approaches under technical, operational, and user constraints.
+    shared_outcome_pattern: Decision-makers receive a defensible direction and explicit criteria.
+    shared_relationship_pattern: Translates technical consequences into product judgment.
+    shared_recipient_pattern:
+    - technical leadership
+    - business leadership
+    - delivery teams
+  memberships:
+    demonstrated:
+    - jeremy_zocdoc_design_system_migrations
+    - jeremy_applied_software_api_workflows
+    - jeremy_genesco_legacy_modernization
+    - jeremy_corus_architecture_review_and_tradeoff_analysis
+    - jeremy_corus_validation_and_test_architecture
+    requested:
+    - prophet_product_judgment_and_acceptance
+    - prophet_ai_tradeoff_analysis
+    - prophet_qualifying_tradeoff_question
+    observed: []
+  lexical_alignment:
+    exact_job_phrases:
+    - evaluate feasibility
+    - shape architecture tradeoffs
+    - explicit tradeoffs
+    - bias toward shippable solutions
+    supported_candidate_phrases:
+    - A/B testing framework
+    - incremental migration
+    - roadmap collaboration
+    - constraints, success criteria, validation rules
+    missing_candidate_phrases: []
+    risky_or_unsupported_phrases: []
+  alignment:
+    strength: strong
+    transferability: high
+    confidence: high
+    gaps:
+    - Current evidence often shows the decision through implementation artifacts rather than explicit written tradeoff memos.
+  constraints: []
+- id: hands_on_technical_prototyping
+  label: Hands-On Technical Prototyping
+  definition: Builds or contributes directly to prototypes, experiments, integrations, and technical implementations to
+    inform product development.
+  context_refs:
+  - jeremy_zocdoc_design_system_migrations
+  - jeremy_applied_software_api_workflows
+  - jeremy_weill_cornell_data_pipeline
+  - jeremy_corus_python_workbench
+  - prophet_hands_on_engineering_partnership
+  - prophet_experimentation_and_go_no_go
+  - prophet_code_and_developer_fluency
+  - prophet_qualifying_prototype_question
+  reduction:
+    shared_skill: Build prototypes, experiments, integrations, or implementation artifacts and learn from their behavior.
+    shared_outcome_pattern: Technical uncertainty is reduced through direct making and testing.
+    shared_relationship_pattern: Connects product direction to implementation evidence.
+    shared_recipient_pattern:
+    - engineering
+    - product teams
+    - users affected by the product
+  memberships:
+    demonstrated:
+    - jeremy_zocdoc_design_system_migrations
+    - jeremy_applied_software_api_workflows
+    - jeremy_weill_cornell_data_pipeline
+    - jeremy_corus_python_workbench
+    requested:
+    - prophet_hands_on_engineering_partnership
+    - prophet_experimentation_and_go_no_go
+    - prophet_code_and_developer_fluency
+    - prophet_qualifying_prototype_question
+    observed: []
+  lexical_alignment:
+    exact_job_phrases:
+    - building prototypes
+    - reviewing code
+    - running experiments
+    - read and write code
+    - Python preferred
+    supported_candidate_phrases:
+    - Python-based local-first workbench
+    - Typer and Pydantic package
+    - REST API wrapper libraries
+    - Python-to-Google-Sheets integration
+    - 227-test architectural suite
+    - TypeScript/React production codebase
+    - 40+ TypeScript/React components
+    missing_candidate_phrases:
+    - production code review
+    risky_or_unsupported_phrases:
+    - Do not imply recent production AI coding depth beyond the available project evidence.
+  alignment:
+    strength: strong
+    transferability: high
+    confidence: high
+    gaps:
+    - Current production code-review responsibility is not directly established.
+    - The repository demonstrates recent Python product implementation, but not a deployed production AI service.
+  constraints:
+  - Use specific projects and tools rather than generic 'hands-on AI engineer' language.
+- id: ai_evaluation_and_release_quality
+  label: AI Evaluation and Release Quality
+  definition: Defines tests, quality thresholds, and release gates for probabilistic AI systems.
+  context_refs:
+  - jeremy_zocdoc_design_system_migrations
+  - jeremy_corus_validation_and_test_architecture
+  - jeremy_corus_ledger_read_write_audit
+  - prophet_ai_evaluation_protocols
+  - prophet_ai_quality_definition
+  - prophet_operational_product_discipline
+  reduction:
+    shared_skill: Create test structures, validation rules, quality criteria, and release checks.
+    shared_outcome_pattern: Capabilities are evaluated against explicit reliability and readiness thresholds.
+    shared_relationship_pattern: Makes uncertain system behavior inspectable enough to support release decisions.
+    shared_recipient_pattern:
+    - product and engineering teams
+    - reviewers and approvers
+    - end users
+  memberships:
+    demonstrated:
+    - jeremy_zocdoc_design_system_migrations
+    - jeremy_corus_validation_and_test_architecture
+    - jeremy_corus_ledger_read_write_audit
+    requested:
+    - prophet_ai_evaluation_protocols
+    - prophet_ai_quality_definition
+    - prophet_operational_product_discipline
+    observed: []
+  lexical_alignment:
+    exact_job_phrases:
+    - testing protocols
+    - hallucination risk
+    - benchmark sets
+    - red-team scenarios
+    - regression tests
+    - release gates
+    - define quality for probabilistic systems
+    supported_candidate_phrases:
+    - 227 collected tests
+    - 45 intentionally expected failures
+    - malformed fixture boundaries
+    - replay comparison
+    - claim admissibility
+    - audit proof
+    missing_candidate_phrases:
+    - benchmark sets
+    - red-team scenarios
+    - formal hallucination test cases
+    risky_or_unsupported_phrases:
+    - Do not claim mature production AI evaluation operations without stronger evidence.
+  alignment:
+    strength: strong_adjacent
+    transferability: high
+    confidence: high
+    gaps:
+    - The repository strongly demonstrates deterministic validation, replay, expected-failure management, and release checks.
+    - It does not yet demonstrate mature probabilistic model benchmarks, hallucination scoring, or red-team suites.
+  constraints:
+  - Treat this as adjacent and emerging, not fully proven.
+- id: observability_and_continuous_improvement
+  label: Observability and Continuous Improvement
+  definition: Makes system behavior visible and converts operational evidence into product or workflow improvements.
+  context_refs:
+  - jeremy_aroko_operational_source_of_truth
+  - jeremy_zocdoc_delivery_workflows
+  - jeremy_applied_software_api_workflows
+  - jeremy_corus_ledger_read_write_audit
+  - jeremy_corus_architecture_review_and_tradeoff_analysis
+  - prophet_observability_and_incident_learning
+  - prophet_value_tracking
+  - prophet_operational_product_discipline
+  reduction:
+    shared_skill: Instrument, reconcile, or expose operating evidence and use it to guide fixes and priorities.
+    shared_outcome_pattern: Failures, gaps, usage, cost, and progress become visible enough to improve the system.
+    shared_relationship_pattern: Connects operational evidence to decision-making and continuous improvement.
+    shared_recipient_pattern:
+    - product leadership
+    - operations teams
+    - users
+  memberships:
+    demonstrated:
+    - jeremy_aroko_operational_source_of_truth
+    - jeremy_zocdoc_delivery_workflows
+    - jeremy_applied_software_api_workflows
+    - jeremy_corus_ledger_read_write_audit
+    - jeremy_corus_architecture_review_and_tradeoff_analysis
+    requested:
+    - prophet_observability_and_incident_learning
+    - prophet_value_tracking
+    - prophet_operational_product_discipline
+    observed: []
+  lexical_alignment:
+    exact_job_phrases:
+    - monitor production performance
+    - telemetry and incident data
+    - failure rates, cost, user drop-off
+    - production monitoring
+    - incident triage
+    supported_candidate_phrases:
+    - operational source of truth
+    - Jira dashboards
+    - trace logging
+    - audit logs
+    - confidence levels
+    missing_candidate_phrases:
+    - incident triage
+    - production AI telemetry
+    risky_or_unsupported_phrases:
+    - Do not equate general operational dashboards with full LLM observability tooling.
+  alignment:
+    strength: strong
+    transferability: high
+    confidence: high
+    gaps:
+    - Direct production LLM metrics such as model latency, token cost, and user drop-off remain unimplemented.
+  constraints: []
+- id: agent_and_workflow_system_design
+  label: Agent and Workflow System Design
+  definition: Translates high-value work into agent, workflow, tool, state, and acceptance structures.
+  context_refs:
+  - jeremy_aroko_web_migration_direction
+  - jeremy_corus_python_workbench
+  - jeremy_corus_permission_aware_agent_execution
+  - jeremy_corus_ledger_read_write_audit
+  - jeremy_weill_cornell_data_pipeline
+  - prophet_use_case_to_agent_specification
+  - prophet_agent_lifecycle_management
+  - prophet_internal_ai_workflow_products
+  - prophet_llm_product_experience
+  reduction:
+    shared_skill: Model work as structured workflows, tool requirements, states, and validation criteria.
+    shared_outcome_pattern: Ambiguous work becomes implementable and governable system behavior.
+    shared_relationship_pattern: Connects real user workflows to technical product structures.
+    shared_recipient_pattern:
+    - internal users
+    - engineering teams
+    - workflow participants
+  memberships:
+    demonstrated:
+    - jeremy_aroko_web_migration_direction
+    - jeremy_corus_python_workbench
+    - jeremy_corus_permission_aware_agent_execution
+    - jeremy_corus_ledger_read_write_audit
+    - jeremy_weill_cornell_data_pipeline
+    requested:
+    - prophet_use_case_to_agent_specification
+    - prophet_agent_lifecycle_management
+    - prophet_internal_ai_workflow_products
+    - prophet_llm_product_experience
+    observed: []
+  lexical_alignment:
+    exact_job_phrases:
+    - agent specifications
+    - workflow diagrams
+    - tool requirements
+    - acceptance tests
+    - agent lifecycle from prototype through production
+    - prompt design
+    supported_candidate_phrases:
+    - AI-assisted workflow system
+    - source manifests
+    - permission states
+    - execution steps
+    - workflow automation
+    missing_candidate_phrases:
+    - production agent deprecation
+    - RAG systems
+    - tool calling
+    risky_or_unsupported_phrases:
+    - Do not imply deployed production agent lifecycle ownership unless externally validated.
+  alignment:
+    strength: strong
+    transferability: high
+    confidence: high
+    gaps:
+    - The deterministic permission-aware action runner is implemented.
+    - Live LLM tool-calling, production monitoring, and agent deprecation remain unproven.
+  constraints:
+  - Preserve independent-project status.
+- id: enterprise_integration_and_security
+  label: Enterprise Integration and Security
+  definition: Designs or coordinates integrations, permissions, authentication, auditability, and governance for enterprise
+    workflows.
+  context_refs:
+  - jeremy_applied_software_api_workflows
+  - jeremy_genesco_legacy_modernization
+  - jeremy_corus_ledger_read_write_audit
+  - jeremy_corus_permission_aware_agent_execution
+  - prophet_enterprise_data_governance
+  - prophet_enterprise_integration_patterns
+  - prophet_secure_enterprise_environment
+  reduction:
+    shared_skill: Translate enterprise workflow and control requirements into APIs, authentication, permissions, logging,
+      and governance structures.
+    shared_outcome_pattern: Systems integrate with enterprise environments while preserving control and trust.
+    shared_relationship_pattern: Connects product capability to organizational infrastructure and risk requirements.
+    shared_recipient_pattern:
+    - IT and security
+    - enterprise users
+    - product and engineering teams
+  memberships:
+    demonstrated:
+    - jeremy_applied_software_api_workflows
+    - jeremy_genesco_legacy_modernization
+    - jeremy_corus_ledger_read_write_audit
+    - jeremy_corus_permission_aware_agent_execution
+    requested:
+    - prophet_enterprise_data_governance
+    - prophet_enterprise_integration_patterns
+    - prophet_secure_enterprise_environment
+    observed: []
+  lexical_alignment:
+    exact_job_phrases:
+    - permissions
+    - access control
+    - auditability
+    - user-facing guardrails
+    - APIs, databases, permissions, authentication
+    - SSO, RBAC, audit logs, data privacy
+    supported_candidate_phrases:
+    - REST APIs
+    - authentication service
+    - trace logging
+    - approval states
+    - audit logs
+    missing_candidate_phrases:
+    - SSO
+    - RBAC
+    - vendor review
+    - data privacy
+    risky_or_unsupported_phrases:
+    - Do not claim direct ownership of enterprise security review or legal governance.
+  alignment:
+    strength: strong_adjacent
+    transferability: high
+    confidence: medium_high
+    gaps:
+    - Application-level auditability and action restrictions are implemented.
+    - Direct SSO, RBAC infrastructure, vendor review, and enterprise privacy ownership remain unproven.
+  constraints: []
+- id: adoption_enablement_and_value_tracking
+  label: Adoption Enablement and Value Tracking
+  definition: Shapes onboarding, feedback loops, metrics, and support structures so new systems become used and valuable.
+  context_refs:
+  - jeremy_zocdoc_design_system_migrations
+  - jeremy_zocdoc_delivery_workflows
+  - jeremy_aroko_web_migration_direction
+  - prophet_translate_strategy_to_adoption
+  - prophet_adoption_enablement
+  - prophet_value_tracking
+  - prophet_prototype_to_production
+  reduction:
+    shared_skill: Coordinate adoption, onboarding, feedback, and measurable outcomes around new technical systems.
+    shared_outcome_pattern: New capability becomes sustained use with visible value.
+    shared_relationship_pattern: Connects shipped product capability to real user practice and business impact.
+    shared_recipient_pattern:
+    - internal users
+    - product leadership
+    - clients
+  memberships:
+    demonstrated:
+    - jeremy_zocdoc_design_system_migrations
+    - jeremy_zocdoc_delivery_workflows
+    - jeremy_aroko_web_migration_direction
+    requested:
+    - prophet_translate_strategy_to_adoption
+    - prophet_adoption_enablement
+    - prophet_value_tracking
+    - prophet_prototype_to_production
+    observed: []
+  lexical_alignment:
+    exact_job_phrases:
+    - measurable adoption
+    - shaping onboarding
+    - creating feedback loops
+    - metrics for adoption, task completion, time saved, output quality, cost-to-serve, and business impact
+    supported_candidate_phrases:
+    - 90%+ adoption
+    - implementation notes
+    - handoff materials
+    - launch readiness
+    missing_candidate_phrases:
+    - cost-to-serve
+    - task completion
+    - formal onboarding
+    risky_or_unsupported_phrases: []
+  alignment:
+    strength: strong
+    transferability: high
+    confidence: high
+    gaps:
+    - Business-impact measurement is less developed than adoption and delivery evidence.
+  constraints: []
+- id: cross_functional_and_partner_coordination
+  label: Cross-Functional and Partner Coordination
+  definition: Coordinates technical, business, design, client, and partner stakeholders through ambiguity and delivery dependencies.
+  context_refs:
+  - jeremy_aroko_web_migration_direction
+  - jeremy_aroko_contributor_leadership
+  - jeremy_zocdoc_delivery_workflows
+  - jeremy_applied_software_api_workflows
+  - jeremy_corus_architecture_review_and_tradeoff_analysis
+  - prophet_backlog_release_team_leadership
+  - prophet_stakeholder_communication
+  - prophet_cross_functional_leadership
+  reduction:
+    shared_skill: Clarify priorities, ownership, requirements, and communication across disciplines and organizations.
+    shared_outcome_pattern: Cross-functional work maintains momentum and shared understanding.
+    shared_relationship_pattern: Connects stakeholder intent and constraints to coordinated execution.
+    shared_recipient_pattern:
+    - cross-functional teams
+    - clients
+    - external partners
+    - leadership
+  memberships:
+    demonstrated:
+    - jeremy_aroko_web_migration_direction
+    - jeremy_aroko_contributor_leadership
+    - jeremy_zocdoc_delivery_workflows
+    - jeremy_applied_software_api_workflows
+    - jeremy_corus_architecture_review_and_tradeoff_analysis
+    requested:
+    - prophet_backlog_release_team_leadership
+    - prophet_stakeholder_communication
+    - prophet_cross_functional_leadership
+    observed: []
+  lexical_alignment:
+    exact_job_phrases:
+    - unblocking work
+    - setting priorities
+    - driving momentum through ambiguity
+    - interface with stakeholders
+    - remove roadblocks
+    - hold people accountable without micromanaging
+    supported_candidate_phrases:
+    - stakeholder coordination
+    - cross-team handoffs
+    - project leadership
+    - collaborated with sales and product teams
+    missing_candidate_phrases:
+    - hold people accountable
+    risky_or_unsupported_phrases:
+    - Do not overstate formal people-management authority.
+  alignment:
+    strength: strong
+    transferability: high
+    confidence: high
+    gaps:
+    - Formal accountability authority is less established than coordination and contributor leadership.
+  constraints:
+  - Frame as project and contributor leadership unless stronger management evidence is added.
+- id: technical_business_communication
+  label: Technical-Business Communication
+  definition: Calibrates technical information, documentation, demonstrations, and recommendations for different audiences.
+  context_refs:
+  - jeremy_aroko_operational_source_of_truth
+  - jeremy_aroko_web_migration_direction
+  - jeremy_zocdoc_delivery_workflows
+  - jeremy_applied_software_api_workflows
+  - jeremy_new_inc_cultural_systems_research
+  - jeremy_corus_architecture_review_and_tradeoff_analysis
+  - prophet_stakeholder_communication
+  - prophet_calibrated_communication
+  - prophet_qualifying_tradeoff_question
+  reduction:
+    shared_skill: Translate complex technical or systemic information into audience-appropriate artifacts and decisions.
+    shared_outcome_pattern: Recipients understand constraints, choices, status, and next actions.
+    shared_relationship_pattern: Makes technical meaning usable across expertise levels.
+    shared_recipient_pattern:
+    - technical teams
+    - business leaders
+    - clients
+    - public or expert audiences
+  memberships:
+    demonstrated:
+    - jeremy_aroko_operational_source_of_truth
+    - jeremy_aroko_web_migration_direction
+    - jeremy_zocdoc_delivery_workflows
+    - jeremy_applied_software_api_workflows
+    - jeremy_new_inc_cultural_systems_research
+    - jeremy_corus_architecture_review_and_tradeoff_analysis
+    requested:
+    - prophet_stakeholder_communication
+    - prophet_calibrated_communication
+    - prophet_qualifying_tradeoff_question
+    observed: []
+  lexical_alignment:
+    exact_job_phrases:
+    - tailor communication to the audience
+    - technical demos
+    - architecture documentation
+    - release notes
+    - clear specifications
+    - message calibrated to the room
+    supported_candidate_phrases:
+    - stakeholder-ready reporting
+    - implementation notes
+    - handoff documentation
+    - technical customer translation
+    - publishable interview framing
+    missing_candidate_phrases:
+    - technical demos
+    - release notes
+    risky_or_unsupported_phrases: []
+  alignment:
+    strength: very_strong
+    transferability: high
+    confidence: high
+    gaps:
+    - Direct evidence of presenting technical demos is limited.
+  constraints: []
+- id: client_application_and_consulting_delivery
+  label: Client Application and Consulting Delivery
+  definition: Translates client or consulting needs into implemented digital products, workflows, and delivery structures.
+  context_refs:
+  - jeremy_aroko_web_migration_direction
+  - jeremy_applied_software_api_workflows
+  - jeremy_freelance_design_program_management
+  - jeremy_new_inc_cultural_systems_research
+  - prophet_client_application_implementation
+  - prophet_consulting_context
+  - prophet_use_case_to_agent_specification
+  reduction:
+    shared_skill: Gather client or expert context and translate it into technical or experience-delivery artifacts.
+    shared_outcome_pattern: Client-facing or consulting work becomes implementable and usable.
+    shared_relationship_pattern: Connects internal technical capability to external client value.
+    shared_recipient_pattern:
+    - clients
+    - consulting teams
+    - end users
+  memberships:
+    demonstrated:
+    - jeremy_aroko_web_migration_direction
+    - jeremy_applied_software_api_workflows
+    - jeremy_freelance_design_program_management
+    - jeremy_new_inc_cultural_systems_research
+    requested:
+    - prophet_client_application_implementation
+    - prophet_consulting_context
+    - prophet_use_case_to_agent_specification
+    observed: []
+  lexical_alignment:
+    exact_job_phrases:
+    - high-value use cases from consulting teams
+    - support client-facing applications
+    - contributing to implementation
+    - consulting or consulting-adjacent experience
+    supported_candidate_phrases:
+    - TypeScript/React production codebase
+    - 40+ TypeScript/React components
+    - client web delivery
+    - REST API wrapper libraries
+    - Python-based workbench
+    - authentication service
+    - data schemas
+    missing_candidate_phrases:
+    - recent end-to-end production AI application ownership
+    risky_or_unsupported_phrases:
+    - Do not claim recent end-to-end production AI application ownership without a single integrated deployment artifact.
+  alignment:
+    strength: strong
+    transferability: high
+    confidence: high
+    gaps:
+    - Jeremy demonstrates production TypeScript/React frontend work plus separate Python, API, authentication, schema, and
+      workflow-system implementation.
+    - The remaining gap is one recent production AI application that integrates those layers end to end, not lack of full-stack
+      component experience.
+  constraints: []
+- id: product_experience_and_ux_quality
+  label: Product Experience and UX Quality
+  definition: Evaluates and improves the usability, consistency, accessibility, and quality of digital product experiences.
+  context_refs:
+  - jeremy_zocdoc_design_system_migrations
+  - jeremy_aroko_web_migration_direction
+  - jeremy_freelance_design_program_management
+  - prophet_product_sense_ux_quality
+  reduction:
+    shared_skill: Assess and improve interface quality through reusable patterns, accessibility, design direction, and implementation
+      criteria.
+    shared_outcome_pattern: Digital products become more usable, coherent, and maintainable.
+    shared_relationship_pattern: Protects end-user value within technical delivery.
+    shared_recipient_pattern:
+    - end users
+    - product teams
+    - clients
+  memberships:
+    demonstrated:
+    - jeremy_zocdoc_design_system_migrations
+    - jeremy_aroko_web_migration_direction
+    - jeremy_freelance_design_program_management
+    requested:
+    - prophet_product_sense_ux_quality
+    observed: []
+  lexical_alignment:
+    exact_job_phrases:
+    - champion the end-user experience
+    - high bar for UI/UX quality
+    supported_candidate_phrases:
+    - accessibility audit
+    - design system migrations
+    - lead web designer
+    - product design
+    - TypeScript/React design systems
+    - 40+ TypeScript/React components
+    missing_candidate_phrases: []
+    risky_or_unsupported_phrases: []
+  alignment:
+    strength: very_strong
+    transferability: high
+    confidence: high
+    gaps: []
+  constraints: []
+unmatched_contexts:
+  demonstrated:
+  - context_id: jeremy_new_inc_big_shot_music_curation
+    reason: No sufficiently specific matching Prophet capability in this reduction.
+  requested:
+  - context_id: prophet_advanced_ai_architecture_familiarity
+    reason: No sufficiently supported Jeremy context in the current ledger, or this item is an employment condition/tool-list/proxy
+      requirement rather than a reducible capability.
+  - context_id: prophet_hybrid_new_york
+    reason: No sufficiently supported Jeremy context in the current ledger, or this item is an employment condition/tool-list/proxy
+      requirement rather than a reducible capability.
+  - context_id: prophet_stack_familiarity
+    reason: No sufficiently supported Jeremy context in the current ledger, or this item is an employment condition/tool-list/proxy
+      requirement rather than a reducible capability.
+  - context_id: prophet_technical_product_experience
+    reason: No sufficiently supported Jeremy context in the current ledger, or this item is an employment condition/tool-list/proxy
+      requirement rather than a reducible capability.
+overall_alignment:
+  summary: The v0.3 evidence ledger explicitly confirms Jeremy's production TypeScript/React experience at Zocdoc. Combined
+    with Python, REST APIs, authentication, schemas, testing, and Corus workflow implementation, this demonstrates work
+    across frontend and backend layers. The remaining application gap is a recent production AI product integrating those
+    layers end to end, rather than a general absence of full-stack experience.
+  strong_capabilities:
+  - technical_business_communication
+  - product_execution_and_delivery
+  - technical_product_judgment
+  - cross_functional_and_partner_coordination
+  - adoption_enablement_and_value_tracking
+  - product_experience_and_ux_quality
+  strong_adjacent_capabilities:
+  - observability_and_continuous_improvement
+  - agent_and_workflow_system_design
+  - enterprise_integration_and_security
+  - client_application_and_consulting_delivery
+  conditional_capabilities:
+  - hands_on_technical_prototyping
+  - ai_evaluation_and_release_quality
+  primary_gaps:
+  - 7+ years of formal product-management experience is not supported by the current ledger.
+  - Mature probabilistic AI evaluation using model benchmarks, hallucination scoring, red-team suites, and production telemetry
+    remains unproven.
+  - One recent production AI application integrating TypeScript/React, Python/API services, data, authentication, deployment,
+    and monitoring end to end remains unproven.
+  - Direct production use of RAG, vector databases, LangChain/LangGraph/LlamaIndex, and LLM observability tools is limited
+    or absent.
+  - Current production code-review responsibility and deployed agent lifecycle management are not clearly established.
+  source_confidence: high_for_job_source_medium_high_for_alignment
+  source_confidence_note: The Prophet posting is fully captured. Alignment confidence varies by the maturity and source
+    quality of Jeremy's demonstrated contexts.
+surface_policy:
+  resume:
+    may_select: Only demonstrated contexts included in capability memberships.
+    may_use_exact_job_language: Only where the demonstrated evidence truthfully supports it.
+    must_not_do:
+    - Convert adjacent experience into unsupported production AI claims.
+    - Claim formal PM tenure that the ledger does not support.
+    - Claim direct experience with named AI tools without evidence.
+    - Treat inferred outcomes as verbatim source claims.
+validation:
+  next_steps:
+  - Validate each candidate phrase selected for the resume against the underlying context evidence.
+  - Separate proxy requirements and tool familiarity from capabilities in downstream fit scoring.
+  - Use the two qualifying questions as direct tests of hands-on prototyping and technical-business judgment.

@@ -1,0 +1,1756 @@
+context:
+  id: prophet_senior_product_manager_ai_foundry
+  kind: target
+  label: Senior Product Manager — AI Foundry Team
+  sources:
+    - test/fixtures/prophet/prophet_senior_product_manager.yaml
+  content:
+    meta:
+      schema_version: corus.contexts.v0.2
+      file_type: corus_context_ledger
+      subject_type: job
+      subject:
+        id: prophet_senior_product_manager_ai_foundry
+        company: Prophet
+        role: Senior Product Manager — AI Foundry Team
+      created_at: 2026-07-12
+      updated_at: 2026-07-12
+      status: full_source_capture
+      context_direction: requested
+      source:
+        id: prophet_greenhouse_4700579005
+        source_type: job_description
+        url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+        captured_at: 2026-07-12
+        capture_method: Greenhouse page retrieval
+        content_sha256: 0db71afbcf818304fb07fa2214f6d697098855da57365441d60ea2c2dec62cf5
+        fidelity: verbatim_role_content_with_application_qualifying_questions
+        scope_note: Includes the complete role description, qualifications, employment
+          condition, salary, and role-specific qualifying questions. Excludes
+          generic application fields and voluntary demographic forms.
+      generation_lineage:
+        regenerated_for_candidate_source: experiences.yaml v0.3
+        job_source_unchanged: true
+        job_source_url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+        job_source_captured_at: 2026-07-12
+    generation_prompt: "Read the supplied source as a ledger of bounded claims.
+      Convert each independently evidenced claim into a context object with
+      exactly five semantic coordinates: origin, skill, outcome, relationship,
+      and recipient. Origin identifies when and where the claim is situated and
+      which evidence source supports it. Skill describes how the outcome was
+      achieved or is expected to be achieved. Outcome describes the change
+      achieved or requested. Relationship explains why that outcome matters to
+      the recipient. Recipient identifies who or what receives the outcome.
+      Preserve exact source language where lexical fidelity matters, especially
+      for job descriptions. Do not generate capabilities inside this file.
+      Capabilities are produced later by a reducer operating across context
+      objects from any source type. Preserve evidence status, attribution
+      limits, uncertainty, and source references. Do not optimize the source
+      claims for a resume or job fit during context generation."
+    capability_reducer_prompt: Given two or more Corus files containing contexts
+      arrays, reduce structurally similar context objects into shared
+      capabilities. Compare skill, outcome, relationship, and recipient while
+      using origin only for provenance, transferability, and situational
+      constraints. A capability is a coordination object over context
+      references; it does not belong inherently to a person or a job. Preserve
+      whether each context is demonstrated, requested, observed, or otherwise
+      directed. Do not group contexts solely because they share keywords. Group
+      them only when they describe a meaningfully transferable way of producing
+      a class of outcomes for a class of recipients. Preserve exact
+      job-description phrases as lexical requirements and allow candidate-side
+      language to vary only when the evidence supports the translation. Output
+      capability groups, context memberships, alignment strengths, lexical
+      coverage, gaps, confidence, and constraints.
+    context_source:
+      source_id: prophet_greenhouse_4700579005
+      url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+      captured_at: 2026-07-12
+      title: Senior Product Manager — AI Foundry Team
+      content: >
+        Senior Product Manager — AI Foundry Team
+
+
+        Location: New York
+
+
+        About MAIA
+
+
+        MAIA is our next leap in AI, an always-available assistant that
+        amplifies human insight. By integrating directly into our workflows, it
+        turns AI into true Augmented Intelligence, extending our creativity,
+        judgment, and expertise. Built on a multi-agent framework, MAIA connects
+        specialized tools, data sources, and reasoning systems through one
+        interface, so you can do more, think deeper, and deliver sharper
+        outcomes for clients.
+
+
+        About the Role
+
+
+        The Senior Product Manager for the AI Foundry team will own the
+        execution, delivery, and continuous improvement of MAIA — Prophet’s
+        internal multi-agent AI platform. Working from the strategic direction
+        set by the AI Center of Excellence, you will translate high-level
+        ambition into shipped product capabilities, measurable adoption, and
+        trusted AI experiences.
+
+
+        This role requires product judgment, technical fluency, delivery
+        discipline, and AI systems thinking. You will partner closely with
+        engineering to evaluate feasibility, shape architecture tradeoffs,
+        define acceptance criteria, and ensure MAIA is reliable enough for real
+        consulting work. You will help determine what should be built, how it
+        should work, and whether it is good enough to ship.
+
+
+        Your Day to Day
+
+
+        Roadmap, Delivery & Team Leadership — Own the product backlog and
+        release cadence from planning through launch. Assess technical
+        feasibility and architecture tradeoffs so leadership can make informed
+        prioritization decisions. Define acceptance criteria grounded in user
+        value, system constraints, and release quality. Lead day-to-day
+        execution of the Foundry product team — unblocking work, setting
+        priorities, and driving momentum through ambiguity.
+
+
+        Technical Credibility & Engineering Partnership — Maintain hands-on
+        technical involvement — building prototypes, reviewing code, and running
+        experiments. Partner with engineering on specifications, sprint
+        execution, QA, release sign-off, and architecture decisions. Comfort
+        with Python, LLM tooling, agent frameworks, APIs, and data schemas is
+        expected.
+
+
+        AI Evaluation, Quality & Observability — Define how MAIA capabilities
+        are evaluated before and after launch. Create testing protocols for
+        agent accuracy, hallucination risk, tool use, latency, and reliability.
+        Build benchmark sets, red-team scenarios, regression tests, and release
+        gates. Monitor production performance — failure rates, cost, user
+        drop-off — and translate telemetry and incident data into product fixes
+        and roadmap priorities.
+
+
+        Experimentation & Technical Tradeoff Analysis — Design and run
+        experiments to test new agent capabilities, benchmark model performance,
+        and translate results into go/no-go recommendations. Evaluate approaches
+        such as RAG, knowledge graphs, agent orchestration, API integration, and
+        model selection against complexity, cost, latency, accuracy, and
+        maintainability. Present clear recommendations with explicit tradeoffs
+        and a bias toward shippable solutions.
+
+
+        Agent, Workflow & Application Development — Gather high-value use cases
+        from consulting teams and translate them into agent specifications,
+        workflow diagrams, tool requirements, and acceptance tests. Manage the
+        agent lifecycle from prototype through production, including prompt
+        design, testing, monitoring, and deprecation. Support client-facing
+        applications by coordinating feature requirements and contributing to
+        implementation.
+
+
+        Data, Security & Governance — Work with IT, security, legal, and
+        business stakeholders to ensure MAIA handles enterprise data
+        responsibly. Define requirements for permissions, access control,
+        auditability, and user-facing guardrails. Ensure new capabilities are
+        designed with trust and governance in mind from the start.
+
+
+        Adoption, Enablement & Value Tracking — Drive adoption across consulting
+        teams by understanding real workflows, shaping onboarding, and creating
+        feedback loops. Define and report metrics for adoption, task completion,
+        time saved, output quality, cost-to-serve, and business impact. Use
+        these insights to prioritize improvements and communicate progress to
+        CoE leadership.
+
+
+        Stakeholder Communication — Tailor communication to the audience.
+        Prepare technical demos, architecture documentation, release notes, and
+        status updates. Interface with stakeholders across design, engineering,
+        consulting, marketing, IT/security, and external partners.
+
+
+        Product Sense & UX Quality — Champion the end-user experience. Hold a
+        high bar for UI/UX quality and articulate specifically what’s working,
+        what isn’t, and what you’d change.
+
+
+        What You Bring
+
+
+        7+ years in product management, with at least 2 years in a technical
+        product environment (AI/ML, platform products, developer tools,
+        enterprise software, or data products). Consulting or
+        consulting-adjacent experience is a strong plus.
+
+
+        Demonstrated technical ability — can read and write code (Python
+        preferred), navigate APIs, data schemas, and developer environments, and
+        hold your own in engineering discussions.
+
+
+        Hands-on experience with LLM-based products, agents, or AI workflow
+        tools — including prompt engineering, model evaluation, RAG systems,
+        tool calling, or structured outputs.
+
+
+        Strong understanding of AI product evaluation — can define quality for
+        probabilistic systems, create test cases, identify hallucination or
+        reasoning failures, and set release criteria.
+
+
+        Experience with enterprise data and integration patterns — APIs,
+        databases, permissions, authentication, and workflow integrations.
+
+
+        Operational product discipline — production monitoring, incident triage,
+        QA, release management, and continuous improvement from telemetry and
+        user feedback.
+
+
+        Proven ability to lead cross-functional teams through ambiguity, remove
+        roadblocks, and hold people accountable without micromanaging.
+
+
+        Excellent communication — clear specifications, confident presentations
+        to technical and business audiences, message calibrated to the room.
+
+
+        Experience building or managing internal AI tools, productivity
+        platforms, or workflow automation products.
+
+
+        Experience with RAG, vector databases, embeddings, knowledge graphs,
+        agent orchestration, or LLM observability tools.
+
+
+        Experience with secure enterprise environments — SSO, RBAC, audit logs,
+        data privacy, or vendor review.
+
+
+        Experience in consulting, professional services, or financial services.
+
+
+        Track record turning prototypes into production products with clear
+        success metrics and adoption plans.
+
+
+        Familiarity with Python, TypeScript, React, FastAPI, LangChain,
+        LangGraph, LlamaIndex, OpenAI/Anthropic APIs, vector databases, Jira,
+        GitHub, Vercel, Supabase, or similar stacks.
+
+
+        This is a hybrid role in our New York office and requires being in
+        person 3+ days per week.
+
+
+        Salary Range: $165,000-220,000
+
+
+        Applicants who do not complete the qualifying questions will not be
+        considered for this role.
+
+
+        Qualifying Questions
+
+
+        Describe a time you built, prototyped, or experimented with a technology
+        product, tool, or feature — even if it was rough, unfinished, or
+        ultimately scrapped. What did you build, what tools or technologies did
+        you use, and what did you learn from the process? (Maximum 300 words)
+
+
+        Imagine you're evaluating two approaches to adding a new capability to
+        an AI platform: Option A is faster to implement but less accurate;
+        Option B is more accurate but significantly more complex and costly to
+        maintain. In 3–5 sentences, describe how you would frame this tradeoff
+        for a non-technical leadership team to help them make a decision.
+    contexts:
+      - id: prophet_maia_product_execution
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - The Senior Product Manager for the AI Foundry team will own the
+                execution, delivery, and continuous improvement of MAIA —
+                Prophet’s internal multi-agent AI platform.
+            fidelity: verbatim
+        skill:
+          value: Own execution, delivery, and continuous improvement of an internal
+            multi-agent AI platform.
+          lexical_forms:
+            - The Senior Product Manager for the AI Foundry team will own the
+              execution, delivery, and continuous improvement of MAIA —
+              Prophet’s internal multi-agent AI platform.
+          confidence: high
+        outcome:
+          value: MAIA ships and improves continuously as a dependable internal product.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Turns strategic AI investment into an operating product.
+          type: responsibility
+        recipient:
+          - value: Prophet consulting teams
+            type: internal_users
+          - value: AI Center of Excellence
+            type: leadership
+        constraints: []
+      - id: prophet_translate_strategy_to_adoption
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Working from the strategic direction set by the AI Center of
+                Excellence, you will translate high-level ambition into shipped
+                product capabilities, measurable adoption, and trusted AI
+                experiences.
+            fidelity: verbatim
+        skill:
+          value: Translate strategic ambition into shipped capabilities, adoption, and
+            trusted AI experiences.
+          lexical_forms:
+            - Working from the strategic direction set by the AI Center of
+              Excellence, you will translate high-level ambition into shipped
+              product capabilities, measurable adoption, and trusted AI
+              experiences.
+          confidence: high
+        outcome:
+          value: Strategic direction becomes product behavior, measurable use, and user
+            trust.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Connects executive intent to realized organizational value.
+          type: responsibility
+        recipient:
+          - value: AI Center of Excellence
+            type: leadership
+          - value: Prophet consulting teams
+            type: internal_users
+        constraints: []
+      - id: prophet_product_judgment_and_acceptance
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - You will partner closely with engineering to evaluate
+                feasibility, shape architecture tradeoffs, define acceptance
+                criteria, and ensure MAIA is reliable enough for real consulting
+                work.
+            fidelity: verbatim
+        skill:
+          value: Evaluate feasibility, shape architecture tradeoffs, and define acceptance
+            criteria with engineering.
+          lexical_forms:
+            - You will partner closely with engineering to evaluate feasibility,
+              shape architecture tradeoffs, define acceptance criteria, and
+              ensure MAIA is reliable enough for real consulting work.
+          confidence: high
+        outcome:
+          value: Product capabilities meet reliability and consulting-work requirements
+            before release.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Connects product judgment to engineering quality and consulting
+            usability.
+          type: responsibility
+        recipient:
+          - value: engineering
+            type: delivery_partner
+          - value: consulting teams
+            type: internal_users
+        constraints: []
+      - id: prophet_backlog_release_team_leadership
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Own the product backlog and release cadence from planning
+                through launch. Assess technical feasibility and architecture
+                tradeoffs so leadership can make informed prioritization
+                decisions. Define acceptance criteria grounded in user value,
+                system constraints, and release quality. Lead day-to-day
+                execution of the Foundry product team — unblocking work, setting
+                priorities, and driving momentum through ambiguity.
+            fidelity: verbatim
+        skill:
+          value: Own backlog, release cadence, prioritization, acceptance criteria, and
+            day-to-day team execution.
+          lexical_forms:
+            - Own the product backlog and release cadence from planning through
+              launch. Assess technical feasibility and architecture tradeoffs so
+              leadership can make informed prioritization decisions. Define
+              acceptance criteria grounded in user value, system constraints,
+              and release quality. Lead day-to-day execution of the Foundry
+              product team — unblocking work, setting priorities, and driving
+              momentum through ambiguity.
+          confidence: high
+        outcome:
+          value: Work moves from planning through launch with explicit priorities, quality
+            thresholds, and momentum.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Enables leadership and the product team to make and execute informed
+            delivery decisions.
+          type: responsibility
+        recipient:
+          - value: Foundry product team
+            type: internal_team
+          - value: leadership
+            type: decision_makers
+        constraints: []
+      - id: prophet_hands_on_engineering_partnership
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Maintain hands-on technical involvement — building prototypes,
+                reviewing code, and running experiments. Partner with
+                engineering on specifications, sprint execution, QA, release
+                sign-off, and architecture decisions. Comfort with Python, LLM
+                tooling, agent frameworks, APIs, and data schemas is expected.
+            fidelity: verbatim
+        skill:
+          value: Build prototypes, review code, run experiments, and partner on
+            specifications, QA, releases, and architecture.
+          lexical_forms:
+            - Maintain hands-on technical involvement — building prototypes,
+              reviewing code, and running experiments. Partner with engineering
+              on specifications, sprint execution, QA, release sign-off, and
+              architecture decisions. Comfort with Python, LLM tooling, agent
+              frameworks, APIs, and data schemas is expected.
+          confidence: high
+        outcome:
+          value: Product decisions remain technically credible and implementation-aware.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Reduces translation loss between product direction and engineering
+            execution.
+          type: responsibility
+        recipient:
+          - value: engineering
+            type: delivery_partner
+          - value: Foundry product team
+            type: internal_team
+        constraints: []
+      - id: prophet_ai_evaluation_protocols
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Define how MAIA capabilities are evaluated before and after
+                launch. Create testing protocols for agent accuracy,
+                hallucination risk, tool use, latency, and reliability. Build
+                benchmark sets, red-team scenarios, regression tests, and
+                release gates.
+            fidelity: verbatim
+        skill:
+          value: Define AI evaluation protocols, benchmarks, red-team scenarios,
+            regression tests, and release gates.
+          lexical_forms:
+            - Define how MAIA capabilities are evaluated before and after
+              launch. Create testing protocols for agent accuracy, hallucination
+              risk, tool use, latency, and reliability. Build benchmark sets,
+              red-team scenarios, regression tests, and release gates.
+          confidence: high
+        outcome:
+          value: Probabilistic AI capabilities have explicit quality definitions and
+            evidence before and after launch.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Makes AI quality inspectable enough to support release decisions.
+          type: responsibility
+        recipient:
+          - value: engineering and product teams
+            type: internal_teams
+          - value: consulting users
+            type: internal_users
+        constraints: []
+      - id: prophet_observability_and_incident_learning
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Monitor production performance — failure rates, cost, user
+                drop-off — and translate telemetry and incident data into
+                product fixes and roadmap priorities.
+            fidelity: verbatim
+        skill:
+          value: Monitor production telemetry and incident data and translate it into
+            fixes and priorities.
+          lexical_forms:
+            - Monitor production performance — failure rates, cost, user
+              drop-off — and translate telemetry and incident data into product
+              fixes and roadmap priorities.
+          confidence: high
+        outcome:
+          value: Observed failures, costs, and drop-off become continuous product
+            improvements.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Connects production evidence to roadmap decisions.
+          type: responsibility
+        recipient:
+          - value: product leadership
+            type: decision_makers
+          - value: MAIA users
+            type: internal_users
+        constraints: []
+      - id: prophet_experimentation_and_go_no_go
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Design and run experiments to test new agent capabilities,
+                benchmark model performance, and translate results into go/no-go
+                recommendations.
+            fidelity: verbatim
+        skill:
+          value: Design and run experiments and translate results into go/no-go
+            recommendations.
+          lexical_forms:
+            - Design and run experiments to test new agent capabilities,
+              benchmark model performance, and translate results into go/no-go
+              recommendations.
+          confidence: high
+        outcome:
+          value: New agent capabilities are tested before commitment or release.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Reduces product and technical uncertainty for decision-makers.
+          type: responsibility
+        recipient:
+          - value: product and engineering leadership
+            type: decision_makers
+        constraints: []
+      - id: prophet_ai_tradeoff_analysis
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Evaluate approaches such as RAG, knowledge graphs, agent
+                orchestration, API integration, and model selection against
+                complexity, cost, latency, accuracy, and maintainability.
+                Present clear recommendations with explicit tradeoffs and a bias
+                toward shippable solutions.
+            fidelity: verbatim
+        skill:
+          value: Evaluate AI architecture approaches across complexity, cost, latency,
+            accuracy, and maintainability.
+          lexical_forms:
+            - Evaluate approaches such as RAG, knowledge graphs, agent
+              orchestration, API integration, and model selection against
+              complexity, cost, latency, accuracy, and maintainability. Present
+              clear recommendations with explicit tradeoffs and a bias toward
+              shippable solutions.
+          confidence: high
+        outcome:
+          value: Leadership receives explicit, shippable recommendations among competing
+            approaches.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Translates technical tradeoffs into decision-ready product guidance.
+          type: responsibility
+        recipient:
+          - value: nontechnical and technical leadership
+            type: decision_makers
+        constraints: []
+      - id: prophet_use_case_to_agent_specification
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Gather high-value use cases from consulting teams and translate
+                them into agent specifications, workflow diagrams, tool
+                requirements, and acceptance tests.
+            fidelity: verbatim
+        skill:
+          value: Translate consulting use cases into agent specifications, workflows, tool
+            requirements, and acceptance tests.
+          lexical_forms:
+            - Gather high-value use cases from consulting teams and translate
+              them into agent specifications, workflow diagrams, tool
+              requirements, and acceptance tests.
+          confidence: high
+        outcome:
+          value: High-value consulting workflows become implementable agent requirements.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Connects real consulting work to technical product design.
+          type: responsibility
+        recipient:
+          - value: consulting teams
+            type: internal_users
+          - value: engineering
+            type: delivery_partner
+        constraints: []
+      - id: prophet_agent_lifecycle_management
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Manage the agent lifecycle from prototype through production,
+                including prompt design, testing, monitoring, and deprecation.
+            fidelity: verbatim
+        skill:
+          value: Manage agent lifecycle from prototype through production, including
+            prompt design, testing, monitoring, and deprecation.
+          lexical_forms:
+            - Manage the agent lifecycle from prototype through production,
+              including prompt design, testing, monitoring, and deprecation.
+          confidence: high
+        outcome:
+          value: Agents progress through explicit lifecycle states and are maintained or
+            retired responsibly.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Creates dependable operational stewardship for AI agents.
+          type: responsibility
+        recipient:
+          - value: MAIA users
+            type: internal_users
+          - value: engineering and product teams
+            type: internal_teams
+        constraints: []
+      - id: prophet_client_application_implementation
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Support client-facing applications by coordinating feature
+                requirements and contributing to implementation.
+            fidelity: verbatim
+        skill:
+          value: Coordinate feature requirements and contribute to implementation of
+            client-facing applications.
+          lexical_forms:
+            - Support client-facing applications by coordinating feature
+              requirements and contributing to implementation.
+          confidence: high
+        outcome:
+          value: AI capabilities become functioning client-facing application features.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Connects internal platform capability to external client value.
+          type: responsibility
+        recipient:
+          - value: Prophet clients
+            type: clients
+          - value: client delivery teams
+            type: delivery_teams
+        constraints: []
+      - id: prophet_enterprise_data_governance
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Work with IT, security, legal, and business stakeholders to
+                ensure MAIA handles enterprise data responsibly. Define
+                requirements for permissions, access control, auditability, and
+                user-facing guardrails. Ensure new capabilities are designed
+                with trust and governance in mind from the start.
+            fidelity: verbatim
+        skill:
+          value: Define enterprise data, permissions, access control, auditability,
+            guardrail, and governance requirements across stakeholders.
+          lexical_forms:
+            - Work with IT, security, legal, and business stakeholders to ensure
+              MAIA handles enterprise data responsibly. Define requirements for
+              permissions, access control, auditability, and user-facing
+              guardrails. Ensure new capabilities are designed with trust and
+              governance in mind from the start.
+          confidence: high
+        outcome:
+          value: New AI capabilities handle enterprise data responsibly and are
+            trustworthy by design.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Connects AI product development to organizational risk, security, and
+            legal obligations.
+          type: responsibility
+        recipient:
+          - value: IT, security, and legal
+            type: governance_stakeholders
+          - value: business stakeholders
+            type: internal_stakeholders
+          - value: MAIA users
+            type: internal_users
+        constraints: []
+      - id: prophet_adoption_enablement
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Drive adoption across consulting teams by understanding real
+                workflows, shaping onboarding, and creating feedback loops.
+            fidelity: verbatim
+        skill:
+          value: Understand workflows, shape onboarding, and create feedback loops that
+            drive adoption.
+          lexical_forms:
+            - Drive adoption across consulting teams by understanding real
+              workflows, shaping onboarding, and creating feedback loops.
+          confidence: high
+        outcome:
+          value: Consulting teams adopt MAIA within real work rather than as an isolated
+            tool.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Connects product capability to sustained user practice.
+          type: responsibility
+        recipient:
+          - value: consulting teams
+            type: internal_users
+        constraints: []
+      - id: prophet_value_tracking
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Define and report metrics for adoption, task completion, time
+                saved, output quality, cost-to-serve, and business impact. Use
+                these insights to prioritize improvements and communicate
+                progress to CoE leadership.
+            fidelity: verbatim
+        skill:
+          value: Define value metrics, report outcomes, and use insights to prioritize
+            improvements.
+          lexical_forms:
+            - Define and report metrics for adoption, task completion, time
+              saved, output quality, cost-to-serve, and business impact. Use
+              these insights to prioritize improvements and communicate progress
+              to CoE leadership.
+          confidence: high
+        outcome:
+          value: Adoption and business value become measurable and guide roadmap choices.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Connects product use to operational and business impact.
+          type: responsibility
+        recipient:
+          - value: CoE leadership
+            type: leadership
+          - value: consulting teams
+            type: internal_users
+        constraints: []
+      - id: prophet_stakeholder_communication
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Tailor communication to the audience. Prepare technical demos,
+                architecture documentation, release notes, and status updates.
+                Interface with stakeholders across design, engineering,
+                consulting, marketing, IT/security, and external partners.
+            fidelity: verbatim
+        skill:
+          value: Calibrate communication and produce demos, architecture documentation,
+            release notes, and status updates across stakeholder groups.
+          lexical_forms:
+            - Tailor communication to the audience. Prepare technical demos,
+              architecture documentation, release notes, and status updates.
+              Interface with stakeholders across design, engineering,
+              consulting, marketing, IT/security, and external partners.
+          confidence: high
+        outcome:
+          value: Different audiences receive usable technical and product information.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Coordinates understanding across functions and organizational boundaries.
+          type: responsibility
+        recipient:
+          - value: design, engineering, consulting, marketing, IT/security
+            type: cross_functional_stakeholders
+          - value: external partners
+            type: partners
+        constraints: []
+      - id: prophet_product_sense_ux_quality
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: responsibility
+            exact_evidence:
+              - Champion the end-user experience. Hold a high bar for UI/UX
+                quality and articulate specifically what’s working, what isn’t,
+                and what you’d change.
+            fidelity: verbatim
+        skill:
+          value: Evaluate and champion end-user experience and UI/UX quality.
+          lexical_forms:
+            - Champion the end-user experience. Hold a high bar for UI/UX
+              quality and articulate specifically what’s working, what isn’t,
+              and what you’d change.
+          confidence: high
+        outcome:
+          value: MAIA experiences are usable, coherent, and deliberately improved.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Protects user value within technical product delivery.
+          type: responsibility
+        recipient:
+          - value: MAIA end users
+            type: internal_users
+        constraints: []
+      - id: prophet_technical_product_experience
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualification
+            exact_evidence:
+              - 7+ years in product management, with at least 2 years in a
+                technical product environment (AI/ML, platform products,
+                developer tools, enterprise software, or data products).
+                Consulting or consulting-adjacent experience is a strong plus.
+            fidelity: verbatim
+        skill:
+          value: Bring sustained product-management experience in technical product
+            environments.
+          lexical_forms:
+            - 7+ years in product management, with at least 2 years in a
+              technical product environment (AI/ML, platform products, developer
+              tools, enterprise software, or data products). Consulting or
+              consulting-adjacent experience is a strong plus.
+          confidence: high
+        outcome:
+          value: The role is staffed by someone able to operate at senior product scope in
+            technical and consulting contexts.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Establishes expected experience maturity.
+          type: qualification
+        recipient:
+          - value: Prophet
+            type: employer
+        constraints: []
+      - id: prophet_code_and_developer_fluency
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualification
+            exact_evidence:
+              - Demonstrated technical ability — can read and write code (Python
+                preferred), navigate APIs, data schemas, and developer
+                environments, and hold your own in engineering discussions.
+            fidelity: verbatim
+        skill:
+          value: Read and write code, navigate APIs and data schemas, and participate
+            credibly in engineering discussions.
+          lexical_forms:
+            - Demonstrated technical ability — can read and write code (Python
+              preferred), navigate APIs, data schemas, and developer
+              environments, and hold your own in engineering discussions.
+          confidence: high
+        outcome:
+          value: Product decisions and collaboration are grounded in direct technical
+            understanding.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Enables credible partnership with engineering.
+          type: qualification
+        recipient:
+          - value: engineering
+            type: delivery_partner
+        constraints: []
+      - id: prophet_llm_product_experience
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualification
+            exact_evidence:
+              - Hands-on experience with LLM-based products, agents, or AI
+                workflow tools — including prompt engineering, model evaluation,
+                RAG systems, tool calling, or structured outputs.
+            fidelity: verbatim
+        skill:
+          value: Apply hands-on experience with LLM products, agents, and AI workflow
+            tools.
+          lexical_forms:
+            - Hands-on experience with LLM-based products, agents, or AI
+              workflow tools — including prompt engineering, model evaluation,
+              RAG systems, tool calling, or structured outputs.
+          confidence: high
+        outcome:
+          value: AI product work draws on direct familiarity with modern LLM patterns.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Supports credible design and evaluation of MAIA capabilities.
+          type: qualification
+        recipient:
+          - value: MAIA product and engineering teams
+            type: internal_teams
+        constraints: []
+      - id: prophet_ai_quality_definition
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualification
+            exact_evidence:
+              - Strong understanding of AI product evaluation — can define
+                quality for probabilistic systems, create test cases, identify
+                hallucination or reasoning failures, and set release criteria.
+            fidelity: verbatim
+        skill:
+          value: Define quality and release criteria for probabilistic AI systems.
+          lexical_forms:
+            - Strong understanding of AI product evaluation — can define quality
+              for probabilistic systems, create test cases, identify
+              hallucination or reasoning failures, and set release criteria.
+          confidence: high
+        outcome:
+          value: AI failures and release thresholds are testable and explicit.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Protects reliability and trust in AI product use.
+          type: qualification
+        recipient:
+          - value: MAIA users
+            type: internal_users
+          - value: product and engineering teams
+            type: internal_teams
+        constraints: []
+      - id: prophet_enterprise_integration_patterns
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualification
+            exact_evidence:
+              - Experience with enterprise data and integration patterns — APIs,
+                databases, permissions, authentication, and workflow
+                integrations.
+            fidelity: verbatim
+        skill:
+          value: Design or manage enterprise data and integration patterns.
+          lexical_forms:
+            - Experience with enterprise data and integration patterns — APIs,
+              databases, permissions, authentication, and workflow integrations.
+          confidence: high
+        outcome:
+          value: MAIA integrates responsibly with enterprise systems and workflows.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Connects the AI product to organizational infrastructure.
+          type: qualification
+        recipient:
+          - value: enterprise systems stakeholders
+            type: technical_stakeholders
+        constraints: []
+      - id: prophet_operational_product_discipline
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualification
+            exact_evidence:
+              - Operational product discipline — production monitoring, incident
+                triage, QA, release management, and continuous improvement from
+                telemetry and user feedback.
+            fidelity: verbatim
+        skill:
+          value: Apply production monitoring, incident triage, QA, release management, and
+            continuous improvement.
+          lexical_forms:
+            - Operational product discipline — production monitoring, incident
+              triage, QA, release management, and continuous improvement from
+              telemetry and user feedback.
+          confidence: high
+        outcome:
+          value: Production product quality improves through operational evidence.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Connects product stewardship to real-world system behavior.
+          type: qualification
+        recipient:
+          - value: MAIA users
+            type: internal_users
+          - value: product and engineering teams
+            type: internal_teams
+        constraints: []
+      - id: prophet_cross_functional_leadership
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualification
+            exact_evidence:
+              - Proven ability to lead cross-functional teams through ambiguity,
+                remove roadblocks, and hold people accountable without
+                micromanaging.
+            fidelity: verbatim
+        skill:
+          value: Lead cross-functional teams through ambiguity while removing roadblocks
+            and maintaining accountability.
+          lexical_forms:
+            - Proven ability to lead cross-functional teams through ambiguity,
+              remove roadblocks, and hold people accountable without
+              micromanaging.
+          confidence: high
+        outcome:
+          value: Teams sustain momentum and ownership without micromanagement.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Enables coordinated delivery across disciplines.
+          type: qualification
+        recipient:
+          - value: cross-functional Foundry team
+            type: internal_team
+        constraints: []
+      - id: prophet_calibrated_communication
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualification
+            exact_evidence:
+              - Excellent communication — clear specifications, confident
+                presentations to technical and business audiences, message
+                calibrated to the room.
+            fidelity: verbatim
+        skill:
+          value: Produce clear specifications and calibrate presentations for technical
+            and business audiences.
+          lexical_forms:
+            - Excellent communication — clear specifications, confident
+              presentations to technical and business audiences, message
+              calibrated to the room.
+          confidence: high
+        outcome:
+          value: Different audiences understand decisions, constraints, and next actions.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Supports alignment and decision-making across expertise levels.
+          type: qualification
+        recipient:
+          - value: technical and business audiences
+            type: stakeholders
+        constraints: []
+      - id: prophet_internal_ai_workflow_products
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualification
+            exact_evidence:
+              - Experience building or managing internal AI tools, productivity
+                platforms, or workflow automation products.
+            fidelity: verbatim
+        skill:
+          value: Build or manage internal AI, productivity, or workflow automation
+            products.
+          lexical_forms:
+            - Experience building or managing internal AI tools, productivity
+              platforms, or workflow automation products.
+          confidence: high
+        outcome:
+          value: Internal work is improved through adopted technical platforms.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Connects platform capability to employee productivity.
+          type: qualification
+        recipient:
+          - value: internal users
+            type: internal_users
+        constraints: []
+      - id: prophet_advanced_ai_architecture_familiarity
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualification
+            exact_evidence:
+              - Experience with RAG, vector databases, embeddings, knowledge
+                graphs, agent orchestration, or LLM observability tools.
+            fidelity: verbatim
+        skill:
+          value: Apply or evaluate advanced AI architecture and observability patterns.
+          lexical_forms:
+            - Experience with RAG, vector databases, embeddings, knowledge
+              graphs, agent orchestration, or LLM observability tools.
+          confidence: high
+        outcome:
+          value: Architecture choices are informed by relevant AI-system experience.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Supports technically credible platform decisions.
+          type: qualification
+        recipient:
+          - value: engineering and product teams
+            type: internal_teams
+        constraints: []
+      - id: prophet_secure_enterprise_environment
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualification
+            exact_evidence:
+              - Experience with secure enterprise environments — SSO, RBAC,
+                audit logs, data privacy, or vendor review.
+            fidelity: verbatim
+        skill:
+          value: Operate within secure enterprise environments and controls.
+          lexical_forms:
+            - Experience with secure enterprise environments — SSO, RBAC, audit
+              logs, data privacy, or vendor review.
+          confidence: high
+        outcome:
+          value: AI capabilities satisfy enterprise security and privacy expectations.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Connects product delivery to enterprise trust requirements.
+          type: qualification
+        recipient:
+          - value: security, legal, IT, and enterprise users
+            type: governance_stakeholders
+        constraints: []
+      - id: prophet_consulting_context
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualification
+            exact_evidence:
+              - Experience in consulting, professional services, or financial
+                services.
+            fidelity: verbatim
+        skill:
+          value: Operate effectively in consulting, professional-services, or
+            financial-services contexts.
+          lexical_forms:
+            - Experience in consulting, professional services, or financial
+              services.
+          confidence: high
+        outcome:
+          value: Product work fits client-service environments and expectations.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Aligns product execution with consulting delivery.
+          type: qualification
+        recipient:
+          - value: Prophet and its clients
+            type: client_service_stakeholders
+        constraints: []
+      - id: prophet_prototype_to_production
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualification
+            exact_evidence:
+              - Track record turning prototypes into production products with
+                clear success metrics and adoption plans.
+            fidelity: verbatim
+        skill:
+          value: Turn prototypes into production products with success metrics and
+            adoption plans.
+          lexical_forms:
+            - Track record turning prototypes into production products with
+              clear success metrics and adoption plans.
+          confidence: high
+        outcome:
+          value: Experimental work becomes adopted, measurable production capability.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Connects innovation to sustained organizational value.
+          type: qualification
+        recipient:
+          - value: internal users and leadership
+            type: stakeholders
+        constraints: []
+      - id: prophet_stack_familiarity
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualification
+            exact_evidence:
+              - Familiarity with Python, TypeScript, React, FastAPI, LangChain,
+                LangGraph, LlamaIndex, OpenAI/Anthropic APIs, vector databases,
+                Jira, GitHub, Vercel, Supabase, or similar stacks.
+            fidelity: verbatim
+        skill:
+          value: Work fluently enough with the listed software, AI, and delivery stack to
+            collaborate and prototype.
+          lexical_forms:
+            - Familiarity with Python, TypeScript, React, FastAPI, LangChain,
+              LangGraph, LlamaIndex, OpenAI/Anthropic APIs, vector databases,
+              Jira, GitHub, Vercel, Supabase, or similar stacks.
+          confidence: high
+        outcome:
+          value: Product work can move through relevant technical environments and
+            tooling.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Supports hands-on participation and engineering partnership.
+          type: qualification
+        recipient:
+          - value: engineering
+            type: delivery_partner
+        constraints: []
+      - id: prophet_hybrid_new_york
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: employment_condition
+            exact_evidence:
+              - This is a hybrid role in our New York office and requires being
+                in person 3+ days per week.
+            fidelity: verbatim
+        skill:
+          value: Work in a hybrid New York operating model at least three days per week.
+          lexical_forms:
+            - This is a hybrid role in our New York office and requires being in
+              person 3+ days per week.
+          confidence: high
+        outcome:
+          value: The role maintains in-person collaboration expectations.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Defines the employment arrangement between Prophet and the role holder.
+          type: employment_condition
+        recipient:
+          - value: Prophet
+            type: employer
+        constraints: []
+      - id: prophet_qualifying_prototype_question
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualifying_question
+            exact_evidence:
+              - Describe a time you built, prototyped, or experimented with a
+                technology product, tool, or feature — even if it was rough,
+                unfinished, or ultimately scrapped. What did you build, what
+                tools or technologies did you use, and what did you learn from
+                the process? (Maximum 300 words)
+            fidelity: verbatim
+        skill:
+          value: Explain a concrete technology prototype or experiment, the tools used,
+            and the learning produced.
+          lexical_forms:
+            - Describe a time you built, prototyped, or experimented with a
+              technology product, tool, or feature — even if it was rough,
+              unfinished, or ultimately scrapped. What did you build, what tools
+              or technologies did you use, and what did you learn from the
+              process? (Maximum 300 words)
+          confidence: high
+        outcome:
+          value: Prophet can evaluate hands-on building behavior and reflective product
+            learning.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Turns prior technical work into screening evidence.
+          type: qualifying_question
+        recipient:
+          - value: Prophet hiring team
+            type: hiring_recipient
+        constraints: []
+      - id: prophet_qualifying_tradeoff_question
+        direction: requested
+        origin:
+          time:
+            captured_at: 2026-07-12
+            requirement_timing: current hiring need
+          place:
+            organization: Prophet
+            environment: MAIA / AI Foundry
+            location: New York
+          evidence_source:
+            source_id: prophet_greenhouse_4700579005
+            source_type: job_description
+            url: https://job-boards.greenhouse.io/prophet/jobs/4700579005
+            captured_at: 2026-07-12
+            source_section: qualifying_question
+            exact_evidence:
+              - "Imagine you're evaluating two approaches to adding a new
+                capability to an AI platform: Option A is faster to implement
+                but less accurate; Option B is more accurate but significantly
+                more complex and costly to maintain. In 3–5 sentences, describe
+                how you would frame this tradeoff for a non-technical leadership
+                team to help them make a decision."
+            fidelity: verbatim
+        skill:
+          value: Frame an AI product tradeoff for nontechnical leadership using accuracy,
+            speed, complexity, and maintenance cost.
+          lexical_forms:
+            - "Imagine you're evaluating two approaches to adding a new
+              capability to an AI platform: Option A is faster to implement but
+              less accurate; Option B is more accurate but significantly more
+              complex and costly to maintain. In 3–5 sentences, describe how you
+              would frame this tradeoff for a non-technical leadership team to
+              help them make a decision."
+          confidence: high
+        outcome:
+          value: Leadership receives a decision-ready explanation of competing technical
+            options.
+          status: desired
+          attribution: Inferred only where the source states an activity rather than its
+            result.
+        relationship:
+          value: Tests technical-business translation and product judgment.
+          type: qualifying_question
+        recipient:
+          - value: Prophet hiring team
+            type: hiring_recipient
+          - value: nontechnical leadership
+            type: decision_makers
+        constraints: []
+    reducer_policy:
+      capabilities_are_outputs: true
+      capabilities_belong_to_neither_side: true
+      group_by:
+        - skill
+        - outcome
+        - relationship
+        - recipient
+      use_origin_for:
+        - provenance
+        - situational constraints
+        - transferability
+      preserve_direction: true
+      job_lexicon_is_immutable: true
+  generation:
+    operation: contextualize
+    provider: google
+    model: mock-gemini-contextualizer
+    prompt_version: contextualize.mock.v1
+    input_refs:
+      - test/fixtures/prophet/prophet_senior_product_manager.yaml
+    schema_version: corus.context.v1
+    created_at: 2026-07-12T21:15:52.732Z

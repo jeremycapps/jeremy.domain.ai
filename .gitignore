@@ -1,5 +1,8 @@
 dist/
 node_modules/
 .env
+.DS_Store
+test/fixtures/prophet/sources/
+outputs/*/
 outputs/*.md
 outputs/*.json

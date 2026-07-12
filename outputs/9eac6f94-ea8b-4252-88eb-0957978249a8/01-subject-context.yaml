@@ -1,0 +1,850 @@
+context:
+  id: jeremy_capps
+  kind: subject
+  label: Jeremy Capps
+  sources:
+    - test/fixtures/prophet/jeremy_corus.yaml
+  content:
+    meta:
+      schema_version: corus.contexts.v0.2
+      file_type: corus_context_ledger
+      subject_type: person
+      subject:
+        id: jeremy_capps
+        name: Jeremy Capps
+      created_at: 2026-07-12
+      status: first_shared_context_model
+      source_file:
+        id: experiences.yaml
+        drive_id: 1H1Akxon_fiUKfikfWL9Pf0wNMaNV0UjFR828ZUw662s
+        drive_url: https://docs.google.com/document/d/1H1Akxon_fiUKfikfWL9Pf0wNMaNV0UjFR828ZUw662s/edit
+        revision_id: ALtnJHySI1QcCyE3_xCTWtPN13XkJaaEnYl4mlZR04efzXxuFnddNnsD8rLSFJlYYw6TbNCzBm8pScl-VcBYK6bq2ntB4EAudB-FhssRMj8
+        schema_version: v0.3
+      context_direction: demonstrated
+      generation_notes:
+        - Contexts were regenerated from experiences.yaml v0.2.
+        - GitHub-backed Corus evidence is split into bounded contexts rather
+          than compressed into one project claim.
+        - Capabilities remain reducer outputs and are not embedded in this file.
+        - Zocdoc contexts now explicitly identify the production stack as
+          TypeScript and React, based on user-confirmed experience.
+      updated_at: 2026-07-12
+      context_count: 16
+    generation_prompt: "Read the supplied source as a ledger of bounded claims.
+      Convert each independently evidenced claim into a context object with
+      exactly five semantic coordinates: origin, skill, outcome, relationship,
+      and recipient. Origin identifies when and where the claim is situated and
+      which evidence source supports it. Skill describes how the outcome was
+      achieved or is expected to be achieved. Outcome describes the change
+      achieved or requested. Relationship explains why that outcome matters to
+      the recipient. Recipient identifies who or what receives the outcome.
+      Preserve exact source language where lexical fidelity matters, especially
+      for job descriptions. Do not generate capabilities inside this file.
+      Capabilities are produced later by a reducer operating across context
+      objects from any source type. Preserve evidence status, attribution
+      limits, uncertainty, and source references. Do not optimize the source
+      claims for a resume or job fit during context generation."
+    capability_reducer_prompt: Given two or more Corus files containing contexts
+      arrays, reduce structurally similar context objects into shared
+      capabilities. Compare skill, outcome, relationship, and recipient while
+      using origin only for provenance, transferability, and situational
+      constraints. A capability is a coordination object over context
+      references; it does not belong inherently to a person or a job. Preserve
+      whether each context is demonstrated, requested, observed, or otherwise
+      directed. Do not group contexts solely because they share keywords. Group
+      them only when they describe a meaningfully transferable way of producing
+      a class of outcomes for a class of recipients. Preserve exact
+      job-description phrases as lexical requirements and allow candidate-side
+      language to vary only when the evidence supports the translation. Output
+      capability groups, context memberships, alignment strengths, lexical
+      coverage, gaps, confidence, and constraints.
+    schema:
+      contexts:
+        - id: string
+          direction: demonstrated | requested | observed
+          origin:
+            time: string or structured interval
+            place:
+              organization: string
+              environment: string
+            evidence_source:
+              source_refs:
+                - string
+              evidence_status: string
+              exact_evidence:
+                - string
+          skill:
+            value: string
+            lexical_forms:
+              - string
+            confidence: high | medium | low
+          outcome:
+            value: string
+            status: achieved | desired | inferred
+            attribution: string
+          relationship:
+            value: string
+            type: string
+          recipient:
+            - value: string
+              type: string
+          constraints:
+            - string
+    contexts:
+      - id: jeremy_aroko_operational_source_of_truth
+        direction: demonstrated
+        origin:
+          time: 2024–Present
+          place:
+            organization: Aroko
+            environment: financial and project operations
+          evidence_source:
+            source_refs:
+              - Jeremy Capps - NYC OTI Senior Product Engineer Resume
+              - Resume for Library180
+              - Jeremy Capps - Mercury API Agentic Banking Resume
+              - 2026 Budget — 2025 Snapshot
+              - 2026 Mid-Year Member Self-Reflection (Shakeil)
+            evidence_status: resume_derived_plus_source_backed_internal_records
+            exact_evidence:
+              - Reconciled financial operations data across YNAB exports,
+                Bill.com payments, Notion timesheets, and spreadsheet records.
+              - Designed workflows to identify missing timesheets, mismatched
+                payment records, incomplete source material, and financial data
+                gaps.
+              - Built structured breakdowns and documentation around source
+                reliability, payment status, confidence levels, and operational
+                cleanup.
+        skill:
+          value: Reconcile fragmented operational data and design source-of-truth
+            workflows.
+          lexical_forms:
+            - data reconciliation
+            - operational source of truth
+            - source reliability
+            - workflow design
+          confidence: high
+        outcome:
+          value: Payments, hours, work categories, gaps, and source reliability became
+            visible enough to support operating decisions.
+          status: achieved
+          attribution: Jeremy's workflow contribution is supported; the $135,000 revenue
+            comparison remains a company outcome and is not attributed to Jeremy
+            alone.
+        relationship:
+          value: Made imperfect financial and project records usable for cooperative
+            operating decisions and cleanup.
+          type: decision_support
+        recipient:
+          - value: Aroko members and project leads
+            type: internal_stakeholders
+          - value: operational decision-makers
+            type: decision_makers
+        constraints:
+          - Do not imply sole responsibility for company revenue outcomes.
+      - id: jeremy_aroko_web_migration_direction
+        direction: demonstrated
+        origin:
+          time: 2024–Present
+          place:
+            organization: Aroko
+            environment: client web delivery and migration planning
+          evidence_source:
+            source_refs:
+              - "User assertion in conversation: site migration roadmaps, SEO
+                teams, content managers, SOWs"
+            evidence_status: user_asserted_needs_document_source
+            exact_evidence:
+              - Wrote site migration roadmaps.
+              - Authored scopes of work for website/client delivery.
+              - Interfaced with SEO teams and content managers.
+              - Served as lead web designer / technical director for web client
+                work.
+        skill:
+          value: Translate business, SEO, content, and technical requirements into
+            migration plans, scopes, handoffs, and launch-readiness criteria.
+          lexical_forms:
+            - site migration roadmaps
+            - scopes of work
+            - stakeholder coordination
+            - launch readiness
+          confidence: medium
+        outcome:
+          value: Client web projects gained an explicit implementation path, ownership
+            model, and launch-readiness structure.
+          status: achieved
+          attribution: Outcome is supported by user testimony; project-specific source
+            documents are still needed.
+        relationship:
+          value: Connected client intent and specialist requirements to coordinated web
+            delivery.
+          type: implementation_translation
+        recipient:
+          - value: Aroko web clients
+            type: client
+          - value: SEO and content collaborators
+            type: delivery_partners
+        constraints:
+          - Needs document-level evidence for specific migrations, platforms,
+            scale, and outcomes.
+      - id: jeremy_aroko_contributor_leadership
+        direction: demonstrated
+        origin:
+          time: 2024–Present
+          place:
+            organization: Aroko
+            environment: junior contributor project delivery
+          evidence_source:
+            source_refs:
+              - "User assertion in conversation: intern and junior web designer
+                leadership"
+            evidence_status: user_asserted_needs_detail
+            exact_evidence:
+              - Had an intern.
+              - Led projects with a junior web designer.
+              - Reviewed and guided junior design/web work.
+        skill:
+          value: Translate ambiguous project goals into scoped tasks, feedback loops,
+            review checkpoints, and delivery standards.
+          lexical_forms:
+            - project leadership
+            - task scoping
+            - feedback cycles
+            - mentorship
+          confidence: medium
+        outcome:
+          value: Junior contributors could complete web and operations work with clearer
+            expectations and quality controls.
+          status: achieved
+          attribution: Project and contributor leadership only; formal people-management
+            scope is not established.
+        relationship:
+          value: Enabled less-experienced contributors to participate effectively in
+            client and internal delivery.
+          type: contributor_enablement
+        recipient:
+          - value: junior contributors
+            type: contributors
+        constraints:
+          - Do not frame as formal people management without further evidence.
+      - id: jeremy_zocdoc_design_system_migrations
+        direction: demonstrated
+        origin:
+          time: 2022–2024
+          place:
+            organization: Zocdoc
+            environment: design systems and frontend platform
+          evidence_source:
+            source_refs:
+              - Current Resume
+              - Mercury Strategic Ops Resume
+              - Linkedin Web Designer Resume
+              - Jeremy Capps - NYC OTI Senior Product Engineer Resume
+              - "experiences.yaml v0.3: user-confirmed Zocdoc TypeScript/React
+                production stack"
+            evidence_status: resume_derived_plus_user_confirmed_stack
+            exact_evidence:
+              - Led sitewide hyperlink/header migrations with 90%+ adoption and
+                8% average code complexity reduction.
+              - Led accessibility audit across 30+ pages and 40+
+                TypeScript/React components, increasing a11y compliance by 23%.
+              - Designed A/B testing framework for design system rollouts
+                contributing to a 6% engagement increase.
+        skill:
+          value: Lead TypeScript/React design-system migrations, accessibility audits,
+            reusable component work, testing, and rollout coordination across
+            production product surfaces.
+          lexical_forms:
+            - design system migrations
+            - A/B testing framework
+            - accessibility audit
+            - rollout workflows
+            - TypeScript
+            - React
+            - frontend architecture
+          confidence: high
+        outcome:
+          value: Shared UI patterns achieved broad adoption with improved accessibility,
+            consistency, engagement, and maintainability.
+          status: achieved
+          attribution: Metrics are resume-derived and should remain linked to the cited
+            source resumes.
+        relationship:
+          value: Enabled product teams and users to rely on more consistent and accessible
+            healthcare interfaces.
+          type: platform_adoption
+        recipient:
+          - value: Zocdoc product teams
+            type: internal_teams
+          - value: Zocdoc users
+            type: end_users
+        constraints: []
+      - id: jeremy_zocdoc_delivery_workflows
+        direction: demonstrated
+        origin:
+          time: 2022–2024
+          place:
+            organization: Zocdoc
+            environment: engineering delivery workflows
+          evidence_source:
+            source_refs:
+              - Jeremy Capps - NYC OTI Senior Product Engineer Resume
+              - Jeremy Capps - Mercury API Agentic Banking Resume
+              - "experiences.yaml v0.3: user-confirmed Zocdoc TypeScript/React
+                production stack"
+            evidence_status: resume_derived_plus_user_confirmed_stack
+            exact_evidence:
+              - Built custom Jira dashboards and broke larger initiatives into
+                smaller tickets.
+              - Improved planning workflows, increasing developer velocity by
+                2–3 points per sprint.
+              - Implemented PR merge template reducing average merge time by a
+                full workday.
+              - Wrote Confluence documentation, implementation notes, Jira
+                tickets, and handoff materials.
+        skill:
+          value: Improve delivery workflows for a TypeScript/React product environment
+            through Jira planning, PR templates, documentation, ticket
+            decomposition, and cross-team handoffs.
+          lexical_forms:
+            - Jira dashboards
+            - planning workflows
+            - PR merge template
+            - handoff materials
+            - TypeScript
+            - React
+          confidence: high
+        outcome:
+          value: Engineering work moved faster with clearer planning, handoffs, and merge
+            workflows.
+          status: achieved
+          attribution: Metrics are resume-derived and linked to cited sources.
+        relationship:
+          value: Made shared technical work easier for developers and partner teams to
+            coordinate and maintain.
+          type: delivery_enablement
+        recipient:
+          - value: developers and cross-functional product teams
+            type: internal_teams
+        constraints: []
+      - id: jeremy_applied_software_api_workflows
+        direction: demonstrated
+        origin:
+          time: 2019–2021
+          place:
+            organization: Applied Software
+            environment: AEC customer software and integrations
+          evidence_source:
+            source_refs:
+              - Current Resume
+              - Mercury Strategic Ops Resume
+              - Jeremy Capps - NYC OTI Senior Product Engineer Resume
+            evidence_status: resume_derived
+            exact_evidence:
+              - Authored 5+ wrapper libraries for REST APIs consumed by internal
+                and customer-facing projects.
+              - Helped build Azure-hosted authentication service for 100+ users.
+              - Introduced trace logging, reducing customer support
+                troubleshooting by 3–4 business days.
+              - Collaborated with sales and product teams to shape roadmap,
+                increasing release frequency by 15%.
+        skill:
+          value: Translate customer workflow needs into reusable APIs, authentication,
+            observability, and roadmap decisions.
+          lexical_forms:
+            - REST APIs
+            - authentication service
+            - trace logging
+            - roadmap collaboration
+          confidence: high
+        outcome:
+          value: Customer and internal software workflows became easier to integrate,
+            support, and release.
+          status: achieved
+          attribution: Team outcomes should remain framed as collaborative.
+        relationship:
+          value: Connected technical implementation to customer workflow and support
+            needs.
+          type: customer_technical_translation
+        recipient:
+          - value: architecture, engineering, and construction customers
+            type: customers
+          - value: sales, product, and support teams
+            type: internal_stakeholders
+        constraints: []
+      - id: jeremy_genesco_legacy_modernization
+        direction: demonstrated
+        origin:
+          time: 2017–2019
+          place:
+            organization: Genesco
+            environment: legacy enterprise systems modernization
+          evidence_source:
+            source_refs:
+              - Jeremy Capps - NYC OTI Senior Product Engineer Resume
+              - Jeremy Capps - Mercury API Agentic Banking Resume
+            evidence_status: resume_derived
+            exact_evidence:
+              - Contributed to modernization involving legacy COBOL systems and
+                Java replacement workflows.
+              - Worked with legacy data flows and production constraints to
+                support incremental migration.
+              - Participated in technical analysis, documentation, debugging,
+                and implementation planning.
+        skill:
+          value: Translate embedded legacy business logic and production constraints into
+            incremental modernization work.
+          lexical_forms:
+            - legacy modernization
+            - COBOL
+            - Java replacement workflows
+            - incremental migration
+          confidence: high
+        outcome:
+          value: Legacy workflows moved toward maintainable Java-based replacement systems
+            without discarding operational constraints.
+          status: achieved
+          attribution: Contributor scope; do not imply sole ownership of the migration.
+        relationship:
+          value: Preserved business continuity while enabling technical modernization.
+          type: operational_continuity
+        recipient:
+          - value: Genesco business and technology teams
+            type: internal_stakeholders
+        constraints:
+          - Preserve contributor-level attribution.
+      - id: jeremy_weill_cornell_data_pipeline
+        direction: demonstrated
+        origin:
+          time: 2020–2021
+          place:
+            organization: Weill Cornell Medicine
+            environment: medical education admissions workflow
+          evidence_source:
+            source_refs:
+              - Current Resume
+              - Mercury Strategic Ops Resume
+              - Resume for Library180
+            evidence_status: resume_derived
+            exact_evidence:
+              - Developed Python to Google Sheets integration to parse, clean,
+                and automate admissions data.
+        skill:
+          value: Build lightweight data integrations that parse, clean, and automate
+            operational records.
+          lexical_forms:
+            - Python
+            - Google Sheets integration
+            - data cleaning
+            - workflow automation
+          confidence: high
+        outcome:
+          value: Admissions data could be updated through a more automated and consistent
+            workflow.
+          status: achieved
+          attribution: Direct freelance implementation claim.
+        relationship:
+          value: Reduced manual work in a medical education data process.
+          type: process_automation
+        recipient:
+          - value: Weill Cornell admissions workflow participants
+            type: internal_users
+        constraints: []
+      - id: jeremy_freelance_design_program_management
+        direction: demonstrated
+        origin:
+          time: 2020–2025
+          place:
+            organization: Independent / Freelance
+            environment: design agency and client program work
+          evidence_source:
+            source_refs:
+              - Linkedin Web Designer Resume
+              - Mercury Strategic Ops Resume
+            evidence_status: resume_derived
+            exact_evidence:
+              - Oversaw product design of a landing page for Shutterstock.
+              - Developed a 90-day program roadmap for a design agency.
+              - Initiated internal Figma design system development.
+              - Implemented a Composable Costing methodology to standardize
+                project quoting and improve transparency.
+        skill:
+          value: Structure creative and agency work through roadmaps, reusable design
+            systems, product design, and transparent costing methods.
+          lexical_forms:
+            - program roadmap
+            - Figma design system
+            - product design
+            - Composable Costing
+          confidence: high
+        outcome:
+          value: Client and agency work gained clearer execution plans, reusable design
+            structure, and more transparent quoting.
+          status: achieved
+          attribution: Multiple freelance engagements grouped in one experience unit.
+        relationship:
+          value: Connected creative delivery to operational planning and commercial
+            transparency.
+          type: creative_operations
+        recipient:
+          - value: design agency teams
+            type: internal_teams
+          - value: design clients
+            type: clients
+        constraints:
+          - Underlying engagements may need to be split into separate contexts
+            in a later normalization pass.
+      - id: jeremy_new_inc_cultural_systems_research
+        direction: demonstrated
+        origin:
+          time: 2025–2026
+          place:
+            organization: NEW INC / New Museum
+            environment: interview-based cultural systems research
+          evidence_source:
+            source_refs:
+              - NEW INC - David Byrne Interview Source - 2025-12-31.pdf
+              - NEW INC - David Byrne Interview Metalabel Link Source
+            evidence_status: source_backed
+            exact_evidence:
+              - Prepared an interview-based piece connecting How Music Works
+                with Christopher Alexander's The Timeless Way of Building.
+              - Received David Byrne team responses addressing music discovery,
+                performance context, venue fit, listening habits, and creative
+                spaces.
+        skill:
+          value: Synthesize expert testimony and systems theory into a coherent cultural
+            research frame.
+          lexical_forms:
+            - interview research
+            - editorial framing
+            - cultural systems research
+            - pattern language
+          confidence: high
+        outcome:
+          value: Abstract relationships among music, space, tools, and creative practice
+            became a publishable research narrative.
+          status: achieved
+          attribution: Source-backed editorial and research contribution.
+        relationship:
+          value: Made expert creative practice legible to cultural and emerging-technology
+            audiences.
+          type: knowledge_translation
+        recipient:
+          - value: NEW INC and cultural audiences
+            type: public_audience
+        constraints: []
+      - id: jeremy_new_inc_big_shot_music_curation
+        direction: demonstrated
+        origin:
+          time: 2025–2026
+          place:
+            organization: NEW INC / New Museum / Water Street Armory
+            environment: Big Shot talk series
+          evidence_source:
+            source_refs:
+              - Big Shot - Craig Kallman Playlist Source - 2025-12-08.pdf
+              - Big Shot - Playlist Links and Craig Follow Up Source -
+                2025-12-17.pdf
+              - Big Shot - Radha Lin Chaddah General Playlist Source -
+                2026-01-29.pdf
+              - Big Shot - Spotify Playlist Links Source
+            evidence_status: source_backed_plus_user_asserted_context
+            exact_evidence:
+              - Jeremy delivered a Craig Kallman playlist, explaining that he
+                selected from Kallman's favorite albums and notable signed
+                projects/artists.
+              - Karen Wong responded positively and later asked Jeremy for links
+                to all four Big Shot Spotify playlists to share with attendees
+                and call him out.
+        skill:
+          value: Translate a speaker's biography, cultural position, and audience context
+            into a curated music experience.
+          lexical_forms:
+            - music curation
+            - playlist research
+            - audience experience design
+            - cultural programming
+          confidence: high
+        outcome:
+          value: Big Shot speakers and attendees received guest-specific playlist
+            artifacts that extended the talk-series experience.
+          status: achieved
+          attribution: Some guest-specific scope remains partly user-asserted, while
+            delivery evidence is source-backed.
+        relationship:
+          value: Connected speaker identity and cultural context to an audience-facing
+            listening experience.
+          type: audience_experience
+        recipient:
+          - value: Big Shot speakers
+            type: participants
+          - value: event attendees
+            type: audience
+        constraints: []
+      - id: jeremy_corus_python_workbench
+        direction: demonstrated
+        origin:
+          time: 2024–Present
+          place:
+            organization: Independent / Corus
+            environment: local-first Python coordination workbench
+          evidence_source:
+            source_refs:
+              - "experiences.yaml v0.2: corus_python_workbench"
+              - https://github.com/jeremycapps/corus-workbench
+              - corus-workbench/pyproject.toml
+              - corus-workbench/docs/review/codebase_review_log.md
+            evidence_status: github_source_backed
+            exact_evidence:
+              - Repository defines a Python package with Typer, Pydantic,
+                PyYAML, HTTPX, BeautifulSoup, DuckDB, pandas, PyArrow, Rich,
+                JSON Schema, and pytest configuration.
+              - Verified commands include validate, reconstruct, project, read,
+                audit, explain, diff, agent-run, ingest, and source
+                registration.
+        skill:
+          value: Build a typed Python workbench and command-line product for source
+            ingestion, validation, reconstruction, coordination, auditing, and
+            artifact generation.
+          lexical_forms:
+            - Python
+            - Pydantic
+            - JSON Schema
+            - CLI
+            - pytest
+            - source ingestion
+            - reconstruction
+          confidence: high
+        outcome:
+          value: Source-backed coordination behavior became executable through a
+            repeatable developer-facing interface.
+          status: achieved
+          attribution: Independent implementation demonstrated in the repository; not a
+            deployed enterprise SaaS product.
+        relationship:
+          value: Connected product architecture to working code, schemas, commands, and
+            tests.
+          type: technical_product_implementation
+        recipient:
+          - value: technical users and reviewers
+            type: product_users
+          - value: downstream agents and artifact generators
+            type: system_consumers
+        constraints:
+          - Do not describe the workbench as a deployed enterprise platform.
+      - id: jeremy_corus_validation_and_test_architecture
+        direction: demonstrated
+        origin:
+          time: 2024–Present
+          place:
+            organization: Independent / Corus
+            environment: architectural validation and test suite
+          evidence_source:
+            source_refs:
+              - "experiences.yaml v0.2: corus_validation_and_test_architecture"
+              - corus-workbench/docs/review/codebase_review_log.md
+              - corus-workbench/tests
+            evidence_status: github_source_backed
+            exact_evidence:
+              - "Repository review recorded 227 collected tests: 182 passing and
+                45 intentionally expected failures."
+              - Tests cover ledger behavior, runtime reconstruction, malformed
+                fixtures, profile-specific actions, and product boundaries.
+              - Expected failures mark unimplemented behavior explicitly.
+        skill:
+          value: Design architectural tests, malformed-input boundaries, deterministic
+            replay checks, expected-failure cases, and release-quality
+            validation.
+          lexical_forms:
+            - 227 tests
+            - expected failures
+            - boundary testing
+            - replay validation
+            - pytest
+          confidence: high
+        outcome:
+          value: Invalid state, incomplete behavior, permission violations, and
+            reconstruction regressions became explicitly detectable.
+          status: achieved
+          attribution: Deterministic system evaluation is demonstrated; probabilistic LLM
+            evaluation is not fully demonstrated.
+        relationship:
+          value: Made system reliability and implementation gaps visible before claims of
+            readiness.
+          type: release_quality
+        recipient:
+          - value: developers and reviewers
+            type: internal_users
+          - value: future product users
+            type: end_users
+        constraints:
+          - Do not equate deterministic architectural testing with mature
+            production LLM benchmarking.
+      - id: jeremy_corus_ledger_read_write_audit
+        direction: demonstrated
+        origin:
+          time: 2024–Present
+          place:
+            organization: Independent / Corus
+            environment: source-bound ledger and audit pipeline
+          evidence_source:
+            source_refs:
+              - "experiences.yaml v0.2: corus_ledger_read_write_audit"
+              - corus-workbench/kernel/ledger
+              - corus-workbench/kernel/audit
+              - corus-workbench/docs/review/codebase_review_log.md
+            evidence_status: github_source_backed
+            exact_evidence:
+              - Verified writes append ledger entries with payload and
+                continuity checks.
+              - Read behavior reconstructs active candidate-claim context.
+              - Audit checks target resolution, ledger continuity, payload
+                integrity, claim admissibility, replay comparison, and
+                output-profile rules.
+        skill:
+          value: Implement source-bound write, read, reconstruction, replay, and audit
+            behavior with integrity and admissibility checks.
+          lexical_forms:
+            - ledger
+            - audit
+            - replay
+            - payload integrity
+            - claim admissibility
+            - source-bound context
+          confidence: high
+        outcome:
+          value: Coordination state and claims could be reconstructed and inspected with
+            explicit proof of origin, continuity, and admissibility.
+          status: achieved
+          attribution: Object-level lineage and external source-authority verification
+            remain partial.
+        relationship:
+          value: Made AI-assisted coordination inspectable and reviewable rather than
+            opaque.
+          type: trust_and_governance
+        recipient:
+          - value: reviewers and approvers
+            type: governance_participants
+          - value: technical users
+            type: product_users
+        constraints:
+          - Preserve the distinction between implemented audit behavior and
+            still-partial external source authority.
+      - id: jeremy_corus_permission_aware_agent_execution
+        direction: demonstrated
+        origin:
+          time: 2024–Present
+          place:
+            organization: Independent / Corus
+            environment: deterministic agent-action demo
+          evidence_source:
+            source_refs:
+              - "experiences.yaml v0.2: corus_permission_aware_agent_execution"
+              - corus-workbench/corus/playground.py
+              - corus-workbench/tests/agentic/test_agent_profile_specific_actions.py
+              - corus-workbench/docs/contracts/work_packet_output.md
+            evidence_status: github_source_backed_partial
+            exact_evidence:
+              - Deterministic action routing proposes bounded work-packet
+                actions.
+              - Profile-specific rules restrict available actions and are tested.
+              - Action outputs include audit references and explicit output
+                contracts.
+        skill:
+          value: Design and implement profile-aware action routing with bounded outputs,
+            restrictions, and auditable execution records.
+          lexical_forms:
+            - agent-run
+            - profile-specific actions
+            - work packet
+            - action restrictions
+            - audit references
+          confidence: high
+        outcome:
+          value: Automated actions could be proposed within explicit role and output
+            boundaries.
+          status: achieved
+          attribution: Implemented as deterministic demo logic, not as a deployed
+            language-model agent runtime.
+        relationship:
+          value: Connected agentic behavior to accountable permissions and reviewable
+            output contracts.
+          type: controlled_automation
+        recipient:
+          - value: workflow participants
+            type: users
+          - value: reviewers and approvers
+            type: governance_participants
+        constraints:
+          - Do not claim deployed LLM agent lifecycle ownership from this
+            context alone.
+      - id: jeremy_corus_architecture_review_and_tradeoff_analysis
+        direction: demonstrated
+        origin:
+          time: "2026"
+          place:
+            organization: Independent / Corus
+            environment: codebase and product architecture review
+          evidence_source:
+            source_refs:
+              - "experiences.yaml v0.2:
+                corus_architecture_review_and_tradeoff_analysis"
+              - corus-workbench/docs/review/codebase_review_log.md
+            evidence_status: github_source_backed_internal_review
+            exact_evidence:
+              - Separated active, partial, synthetic, stale, supporting, and
+                future product components.
+              - Identified competing command surfaces and recommended one
+                primary product interface.
+              - Documented component-level status, evidence, gaps, and
+                recommendations.
+        skill:
+          value: Evaluate architecture and product scope, identify competing paths and
+            evidence limits, and turn findings into prioritized implementation
+            decisions.
+          lexical_forms:
+            - architecture review
+            - tradeoff analysis
+            - scope boundary
+            - implementation priority
+            - active vs partial
+          confidence: high
+        outcome:
+          value: The credible product boundary, technical debt, and next implementation
+            priorities became explicit.
+          status: achieved
+          attribution: Internal review artifact grounded in repository evidence.
+        relationship:
+          value: Connected technical reality to product positioning and roadmap judgment.
+          type: product_and_technical_judgment
+        recipient:
+          - value: product owner and implementers
+            type: decision_makers
+          - value: external reviewers
+            type: reviewers
+        constraints:
+          - Preserve explicit distinctions among implemented, partial,
+            synthetic, and planned behavior.
+    reducer_policy:
+      capabilities_are_outputs: true
+      capabilities_belong_to_neither_side: true
+      group_by:
+        - skill
+        - outcome
+        - relationship
+        - recipient
+      use_origin_for:
+        - provenance
+        - situational constraints
+        - transferability
+      preserve_direction: true
+  generation:
+    operation: contextualize
+    provider: google
+    model: mock-gemini-contextualizer
+    prompt_version: contextualize.mock.v1
+    input_refs:
+      - test/fixtures/prophet/jeremy_corus.yaml
+    schema_version: corus.context.v1
+    created_at: 2026-07-12T21:15:52.727Z

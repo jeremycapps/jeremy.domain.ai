@@ -1,5 +1,6 @@
 import http from "node:http";
 import { handleGenerateResume, buildErrorResponse } from "./routes/generateResume.js";
+import { buildCapabilityErrorResponse, handleCapabilityAnalysis, handleCapabilityReadiness } from "./routes/capabilityAnalysis.js";
 
 async function readJsonBody(request: http.IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = [];
@@ -19,6 +20,28 @@ export function createServer() {
     if (request.method === "GET" && request.url === "/health") {
       response.statusCode = 200;
       response.end(JSON.stringify({ status: "ok" }));
+      return;
+    }
+
+    if (request.method === "GET" && request.url?.startsWith("/api/capability-analysis/readiness")) {
+      const url = new URL(request.url, "http://localhost");
+      const result = handleCapabilityReadiness(url.searchParams.get("mode") ?? "live");
+      response.statusCode = 200;
+      response.end(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (request.method === "POST" && request.url === "/api/capability-analysis") {
+      try {
+        const body = await readJsonBody(request);
+        const result = await handleCapabilityAnalysis(body);
+        response.statusCode = 200;
+        response.end(JSON.stringify(result, null, 2));
+      } catch (error) {
+        const errorResponse = buildCapabilityErrorResponse(error);
+        response.statusCode = errorResponse.statusCode;
+        response.end(JSON.stringify(errorResponse.body, null, 2));
+      }
       return;
     }
 
