@@ -121,7 +121,7 @@ export type CorusExecutionMode = "mocked" | "fixture" | "live";
 export type ContextPosition = "subject" | "target";
 export type CapabilitySupport = "supported" | "adjacent" | "unsupported" | "unknown";
 export type CapabilityConfidence = "high" | "medium" | "low";
-export type CapabilityValidationStatus = "passed" | "revise" | "architect_required" | "failed";
+export type CapabilityValidationStatus = "passed" | "revise" | "architect_required" | "failed" | "recovery_failed";
 export type ProjectionKind = "resume" | "capability_assessment";
 
 export interface ContextGenerationMetadata {
@@ -199,7 +199,7 @@ export interface CapabilityProjection {
 
 export interface StageGenerationRecord {
   id: string;
-  type: "contextualization" | "capability_reduction" | "capability_validation" | "projection";
+  type: "contextualization" | "capability_reduction" | "failure_analysis" | "capability_validation" | "projection";
   created_at: string;
   input_refs: string[];
   output_ref: string;
@@ -250,6 +250,11 @@ export interface ReduceCapabilitiesInput {
     target: Context;
   };
   revision_findings?: ValidationFinding[];
+  failure_analysis?: FailureAnalysis;
+  prior_raw_output?: unknown;
+  structural_error?: string;
+  valid_subject_evidence_ids?: string[];
+  valid_target_requirement_ids?: string[];
   previous_capabilities?: CapabilityCandidate[];
 }
 
@@ -259,6 +264,44 @@ export interface ValidateCapabilitiesInput {
     subject: Context;
     target: Context;
   };
+}
+
+export interface HandoffFailure {
+  id: string;
+  run_id: string;
+  stage: "capability_reduction";
+  provider: "anthropic";
+  attempt: number;
+  failure_type: "schema_validation";
+  message: string;
+  expected_schema_ref: "corus.capability_reduction.v1";
+  raw_output_ref: string;
+  subject_context_ref: string;
+  target_context_ref: string;
+  created_at: string;
+}
+
+export interface FailureAnalysisInput {
+  handoff_failure: HandoffFailure;
+  expected_schema: Record<string, unknown>;
+  raw_provider_output: unknown;
+  valid_subject_evidence_ids: string[];
+  valid_target_requirement_ids: string[];
+}
+
+export interface FailureAnalysis {
+  status: "correctable" | "architect_required" | "unrecoverable";
+  failed_stage: "capability_reduction";
+  failure_type: "schema_validation";
+  diagnosis: string;
+  corrections: Array<{
+    field: string;
+    instruction: string;
+    reason: string;
+  }>;
+  retry_stage: "capability_reduction" | null;
+  architecture_change_required: boolean;
+  confidence: "high" | "medium" | "low";
 }
 
 export interface CapabilityAnalysisRequest {
@@ -282,6 +325,8 @@ export interface CapabilityAnalysisResponse {
   projection: CapabilityProjection | null;
   generation_records: StageGenerationRecord[];
   artifact_dir: string;
+  handoff_failure?: HandoffFailure;
+  failure_analysis?: FailureAnalysis;
   error?: {
     message: string;
     provider?: string;

@@ -266,6 +266,6 @@ export async function runProphetFixtureEvaluation(root = getProjectRoot(), mode:
   );
   const baseline = parse(await fs.readFile(path.join(fixtureRoot, "jeremy_prophet_senior_product_manager_capabilities.yaml"), "utf8"));
   const report = evaluateCapabilityRun({ run, baseline, fixture: "prophet", baselineRef });
-  await fs.writeFile(path.join(root, run.artifact_dir, "05-evaluation.yaml"), stringify(report), "utf8");
+  await fs.writeFile(path.join(root, run.artifact_dir, run.handoff_failure ? "07-evaluation.yaml" : "05-evaluation.yaml"), stringify(report), "utf8");
   return report;
 }

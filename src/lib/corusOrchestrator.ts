@@ -8,6 +8,9 @@ import type {
   Context,
   ContextualizeInput,
   CorusExecutionMode,
+  FailureAnalysis,
+  FailureAnalysisInput,
+  HandoffFailure,
   ProviderResult,
   ReduceCapabilitiesInput,
   ValidateCapabilitiesInput
@@ -24,13 +27,21 @@ import {
 } from "./corusArtifacts.js";
 import { projectValidatedCapabilities } from "./corusProjection.js";
 import { getProjectRoot } from "./paths.js";
-import { MockCapabilityReductionProvider, MockContextualizationProvider, MockValidationProvider } from "../providers/mockProviders.js";
-import { AnthropicCapabilityReductionProvider, GeminiContextualizationProvider, OpenAIValidationProvider, providerReadiness } from "../providers/liveProviders.js";
+import { MockCapabilityReductionProvider, MockContextualizationProvider, MockFailureAnalysisProvider, MockValidationProvider } from "../providers/mockProviders.js";
+import {
+  AnthropicCapabilityReductionProvider,
+  expectedCapabilityReductionSchema,
+  GeminiContextualizationProvider,
+  OpenAIFailureAnalysisProvider,
+  OpenAIValidationProvider,
+  providerReadiness
+} from "../providers/liveProviders.js";
 import { ProviderConfigurationError, ProviderExecutionError } from "../providers/errors.js";
 
 export interface CapabilityProviders {
   contextualizer: AgentProvider<ContextualizeInput, Context>;
   reducer: AgentProvider<ReduceCapabilitiesInput, CapabilityReduction>;
+  failureAnalyzer: AgentProvider<FailureAnalysisInput, FailureAnalysis>;
   validator: AgentProvider<ValidateCapabilitiesInput, CapabilityValidation>;
 }
 
@@ -61,6 +72,7 @@ export function providersForMode(mode: CorusExecutionMode): CapabilityProviders 
     return {
       contextualizer: new GeminiContextualizationProvider(),
       reducer: new AnthropicCapabilityReductionProvider(),
+      failureAnalyzer: new OpenAIFailureAnalysisProvider(),
       validator: new OpenAIValidationProvider()
     };
   }
@@ -68,6 +80,7 @@ export function providersForMode(mode: CorusExecutionMode): CapabilityProviders 
   return {
     contextualizer: new MockContextualizationProvider(),
     reducer: new MockCapabilityReductionProvider(),
+    failureAnalyzer: new MockFailureAnalysisProvider(),
     validator: new MockValidationProvider()
   };
 }
@@ -82,6 +95,8 @@ function failedResponse(input: {
   validation: CapabilityValidation;
   artifactDir: string;
   records: CapabilityAnalysisResponse["generation_records"];
+  handoffFailure?: HandoffFailure;
+  failureAnalysis?: FailureAnalysis;
 }): CapabilityAnalysisResponse {
   return {
     run_id: input.runId,
@@ -92,8 +107,49 @@ function failedResponse(input: {
     validation: input.validation,
     projection: null,
     generation_records: input.records,
-    artifact_dir: input.artifactDir
+    artifact_dir: input.artifactDir,
+    handoff_failure: input.handoffFailure,
+    failure_analysis: input.failureAnalysis
   };
+}
+
+function idsFromContext(context: Context): string[] {
+  const contexts = context.content.contexts;
+  if (!Array.isArray(contexts)) return [];
+  return contexts
+    .map((entry) => (entry && typeof entry === "object" ? (entry as { id?: unknown }).id : undefined))
+    .filter((id): id is string => typeof id === "string");
+}
+
+async function persistReductionFailure(input: {
+  root: string;
+  outputDir: string;
+  runId: string;
+  attempt: number;
+  error: ProviderExecutionError;
+  subjectArtifact: string;
+  targetArtifact: string;
+}): Promise<{ handoffFailure: HandoffFailure; rawOutputRef: string; errorRef: string }> {
+  const rawName = input.attempt === 1 ? "raw-02-capability-reduction-attempt-1.json" : "raw-04-capability-reduction-attempt-2.json";
+  const errorName = input.attempt === 1 ? "02-capability-reduction-attempt-1-error.yaml" : "04-capability-reduction-attempt-2-error.yaml";
+  const rawPath = await writeJsonArtifact(input.outputDir, rawName, input.error.raw_output ?? {});
+  const rawOutputRef = artifactRef(input.root, rawPath);
+  const handoffFailure: HandoffFailure = {
+    id: randomUUID(),
+    run_id: input.runId,
+    stage: "capability_reduction",
+    provider: "anthropic",
+    attempt: input.attempt,
+    failure_type: "schema_validation",
+    message: input.error.message,
+    expected_schema_ref: "corus.capability_reduction.v1",
+    raw_output_ref: rawOutputRef,
+    subject_context_ref: artifactRef(input.root, input.subjectArtifact),
+    target_context_ref: artifactRef(input.root, input.targetArtifact),
+    created_at: new Date().toISOString()
+  };
+  const errorPath = await writeYamlArtifact(input.outputDir, errorName, { handoff_failure: handoffFailure });
+  return { handoffFailure, rawOutputRef, errorRef: artifactRef(input.root, errorPath) };
 }
 
 export async function runCapabilityAnalysis(
@@ -170,13 +226,179 @@ export async function runCapabilityAnalysis(
     })
   );
 
-  const reductionResult = await executeProviderStage(outputDir, "raw-02-capabilities-provider-error.json", () =>
-    providers.reducer.execute({ contexts: { subject: subjectResult.output, target: targetResult.output } })
-  );
+  let handoffFailure: HandoffFailure | undefined;
+  let failureAnalysis: FailureAnalysis | undefined;
+  let reductionResult: ProviderResult<CapabilityReduction>;
+
+  try {
+    reductionResult = await providers.reducer.execute({ contexts: { subject: subjectResult.output, target: targetResult.output } });
+  } catch (error) {
+    if (!(error instanceof ProviderExecutionError) || error.provider !== "anthropic") throw error;
+    const persistedFailure = await persistReductionFailure({
+      root,
+      outputDir,
+      runId,
+      attempt: 1,
+      error,
+      subjectArtifact,
+      targetArtifact
+    });
+    handoffFailure = persistedFailure.handoffFailure;
+    records.push(
+      stageRecord({
+        type: "capability_reduction",
+        input_refs: [artifactRef(root, subjectArtifact), artifactRef(root, targetArtifact)],
+        output_ref: persistedFailure.errorRef,
+        raw_output_ref: persistedFailure.rawOutputRef,
+        provider: "anthropic",
+        model: "unknown",
+        prompt_version: "reduce.anthropic.v1",
+        schema_version: "corus.capabilities.v1",
+        validation_status: "schema_invalid_attempt_1",
+        metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0 }
+      })
+    );
+
+    const failureAnalysisInput: FailureAnalysisInput = {
+      handoff_failure: handoffFailure,
+      expected_schema: expectedCapabilityReductionSchema(),
+      raw_provider_output: error.raw_output ?? {},
+      valid_subject_evidence_ids: idsFromContext(subjectResult.output),
+      valid_target_requirement_ids: idsFromContext(targetResult.output)
+    };
+    let failureAnalysisResult: ProviderResult<FailureAnalysis>;
+    try {
+      failureAnalysisResult = await providers.failureAnalyzer.execute(failureAnalysisInput);
+    } catch (analysisError) {
+      const rawOutput = analysisError instanceof ProviderExecutionError ? analysisError.raw_output : undefined;
+      const rawErrorPath =
+        rawOutput !== undefined ? await writeJsonArtifact(outputDir, "raw-03-openai-failure-analysis-provider-error.json", rawOutput) : undefined;
+      const analysisErrorPath = await writeYamlArtifact(outputDir, "error-03-openai-failure-analysis-provider-error.yaml", {
+        created_at: new Date().toISOString(),
+        status: "error",
+        provider: analysisError instanceof ProviderExecutionError ? analysisError.provider : undefined,
+        message: analysisError instanceof Error ? analysisError.message : "Unknown failure-analysis error."
+      });
+      records.push(
+        stageRecord({
+          type: "failure_analysis",
+          input_refs: [persistedFailure.errorRef, persistedFailure.rawOutputRef],
+          output_ref: artifactRef(root, analysisErrorPath),
+          raw_output_ref: rawErrorPath ? artifactRef(root, rawErrorPath) : undefined,
+          provider: analysisError instanceof ProviderExecutionError ? analysisError.provider : "openai",
+          model: "unknown",
+          prompt_version: "failure-analysis.openai.v1",
+          schema_version: "corus.failure_analysis.v1",
+          validation_status: "error",
+          metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0 }
+        })
+      );
+      await writeGenerationRecords(outputDir, records);
+      return failedResponse({
+        runId,
+        mode,
+        status: "failed",
+        subject: subjectResult.output,
+        target: targetResult.output,
+        reduction: { reducer: "capabilities", inputs: { subject: subjectResult.output.id, target: targetResult.output.id }, capabilities: [] },
+        validation: { status: "failed", findings: [], validated_capability_ids: [], rejected_capability_ids: [] },
+        artifactDir: artifactRef(root, outputDir),
+        records,
+        handoffFailure
+      });
+    }
+    failureAnalysis = failureAnalysisResult.output;
+    const failureAnalysisArtifact = await writeYamlArtifact(outputDir, "03-openai-failure-analysis.yaml", { failure_analysis: failureAnalysis });
+    const failureAnalysisRawArtifact = failureAnalysisResult.raw_output
+      ? await writeJsonArtifact(outputDir, "raw-03-openai-failure-analysis-provider.json", failureAnalysisResult.raw_output)
+      : undefined;
+    records.push(
+      stageRecord({
+        type: "failure_analysis",
+        input_refs: [persistedFailure.errorRef, persistedFailure.rawOutputRef],
+        output_ref: artifactRef(root, failureAnalysisArtifact),
+        raw_output_ref: failureAnalysisRawArtifact ? artifactRef(root, failureAnalysisRawArtifact) : undefined,
+        provider: failureAnalysisResult.provider,
+        model: failureAnalysisResult.model,
+        prompt_version: failureAnalysisResult.prompt_version,
+        schema_version: "corus.failure_analysis.v1",
+        validation_status: failureAnalysis.status,
+        metrics: failureAnalysisResult.metrics
+      })
+    );
+
+    if (failureAnalysis.status !== "correctable" || failureAnalysis.retry_stage !== "capability_reduction") {
+      const status = failureAnalysis.status === "architect_required" ? "architect_required" : "failed";
+      await writeGenerationRecords(outputDir, records);
+      return failedResponse({
+        runId,
+        mode,
+        status,
+        subject: subjectResult.output,
+        target: targetResult.output,
+        reduction: { reducer: "capabilities", inputs: { subject: subjectResult.output.id, target: targetResult.output.id }, capabilities: [] },
+        validation: { status, findings: [], validated_capability_ids: [], rejected_capability_ids: [] },
+        artifactDir: artifactRef(root, outputDir),
+        records,
+        handoffFailure,
+        failureAnalysis
+      });
+    }
+
+    try {
+      reductionResult = await providers.reducer.execute({
+        contexts: { subject: subjectResult.output, target: targetResult.output },
+        failure_analysis: failureAnalysis,
+        prior_raw_output: error.raw_output ?? {},
+        structural_error: error.message,
+        valid_subject_evidence_ids: idsFromContext(subjectResult.output),
+        valid_target_requirement_ids: idsFromContext(targetResult.output)
+      });
+    } catch (retryError) {
+      if (!(retryError instanceof ProviderExecutionError) || retryError.provider !== "anthropic") throw retryError;
+      const persistedRetryFailure = await persistReductionFailure({
+        root,
+        outputDir,
+        runId,
+        attempt: 2,
+        error: retryError,
+        subjectArtifact,
+        targetArtifact
+      });
+      records.push(
+        stageRecord({
+          type: "capability_reduction",
+          input_refs: [artifactRef(root, subjectArtifact), artifactRef(root, targetArtifact), artifactRef(root, failureAnalysisArtifact)],
+          output_ref: persistedRetryFailure.errorRef,
+          raw_output_ref: persistedRetryFailure.rawOutputRef,
+          provider: "anthropic",
+          model: "unknown",
+          prompt_version: "reduce.anthropic.recovery.v1",
+          schema_version: "corus.capabilities.v1",
+          validation_status: "schema_invalid_attempt_2",
+          metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0 }
+        })
+      );
+      await writeGenerationRecords(outputDir, records);
+      return failedResponse({
+        runId,
+        mode,
+        status: "recovery_failed",
+        subject: subjectResult.output,
+        target: targetResult.output,
+        reduction: { reducer: "capabilities", inputs: { subject: subjectResult.output.id, target: targetResult.output.id }, capabilities: [] },
+        validation: { status: "recovery_failed", findings: [], validated_capability_ids: [], rejected_capability_ids: [] },
+        artifactDir: artifactRef(root, outputDir),
+        records,
+        handoffFailure,
+        failureAnalysis
+      });
+    }
+  }
   let reduction = reductionResult.output;
-  let capabilitiesArtifact = await writeYamlArtifact(outputDir, "02-capabilities.yaml", reduction);
+  let capabilitiesArtifact = await writeYamlArtifact(outputDir, handoffFailure ? "04-capabilities-recovered.yaml" : "02-capabilities.yaml", reduction);
   let reductionRawArtifact = reductionResult.raw_output
-    ? await writeJsonArtifact(outputDir, "raw-02-capabilities-provider.json", reductionResult.raw_output)
+    ? await writeJsonArtifact(outputDir, handoffFailure ? "raw-04-capability-reduction-attempt-2.json" : "raw-02-capabilities-provider.json", reductionResult.raw_output)
     : undefined;
   records.push(
     stageRecord({
@@ -188,7 +410,7 @@ export async function runCapabilityAnalysis(
       model: reductionResult.model,
       prompt_version: reductionResult.prompt_version,
       schema_version: "corus.capabilities.v1",
-      validation_status: "unvalidated",
+      validation_status: handoffFailure ? "schema_valid_attempt_2" : "unvalidated",
       metrics: reductionResult.metrics
     })
   );
@@ -200,9 +422,9 @@ export async function runCapabilityAnalysis(
     })
   );
   let validation = validationResult.output;
-  let validationArtifact = await writeYamlArtifact(outputDir, "03-validation.yaml", { validation });
+  let validationArtifact = await writeYamlArtifact(outputDir, handoffFailure ? "05-semantic-validation.yaml" : "03-validation.yaml", { validation });
   let validationRawArtifact = validationResult.raw_output
-    ? await writeJsonArtifact(outputDir, "raw-03-validation-provider.json", validationResult.raw_output)
+    ? await writeJsonArtifact(outputDir, handoffFailure ? "raw-05-semantic-validation-provider.json" : "raw-03-validation-provider.json", validationResult.raw_output)
     : undefined;
   records.push(
     stageRecord({
@@ -285,7 +507,9 @@ export async function runCapabilityAnalysis(
       reduction,
       validation,
       artifactDir: artifactRef(root, outputDir),
-      records
+      records,
+      handoffFailure,
+      failureAnalysis
     });
   }
 
@@ -300,12 +524,14 @@ export async function runCapabilityAnalysis(
       reduction,
       validation,
       artifactDir: artifactRef(root, outputDir),
-      records
+      records,
+      handoffFailure,
+      failureAnalysis
     });
   }
 
   const projection = projectValidatedCapabilities(reduction.capabilities, validation, request.projection ?? "capability_assessment");
-  const projectionArtifact = await writeMarkdownArtifact(outputDir, "04-projection.md", projection.content);
+  const projectionArtifact = await writeMarkdownArtifact(outputDir, handoffFailure ? "06-projection.md" : "04-projection.md", projection.content);
   records.push(
     stageRecord({
       type: "projection",
@@ -330,7 +556,9 @@ export async function runCapabilityAnalysis(
     validation,
     projection,
     generation_records: records,
-    artifact_dir: artifactRef(root, outputDir)
+    artifact_dir: artifactRef(root, outputDir),
+    handoff_failure: handoffFailure,
+    failure_analysis: failureAnalysis
   };
 }
 

@@ -4,6 +4,8 @@ import type {
   CapabilityValidation,
   Context,
   ContextualizeInput,
+  FailureAnalysis,
+  FailureAnalysisInput,
   ProviderReadiness,
   ProviderModelAvailability,
   ProviderResult,
@@ -13,7 +15,7 @@ import type {
 import { normalizeContext } from "../lib/corusContext.js";
 import { ProviderConfigurationError, ProviderExecutionError } from "./errors.js";
 import { metricsFromUsage, parseJsonObject } from "./providerUtils.js";
-import { validateCapabilityValidationOutput, validateContextOutput, validateReductionOutput } from "./validators.js";
+import { validateCapabilityValidationOutput, validateContextOutput, validateFailureAnalysisOutput, validateReductionOutput } from "./validators.js";
 
 function requireKey(name: string, provider: string): string {
   const value = process.env[name];
@@ -171,7 +173,7 @@ export class GeminiContextualizationProvider implements AgentProvider<Contextual
     );
 
     const raw = await response.json();
-    if (!response.ok) throw new ProviderExecutionError("google", `Gemini contextualization failed with HTTP ${response.status}.`);
+    if (!response.ok) throw new ProviderExecutionError("google", `Gemini contextualization failed with HTTP ${response.status}.`, raw);
     let output;
     try {
       const parsed = parseJsonObject(textFromGeminiResponse(raw));
@@ -188,11 +190,35 @@ export class GeminiContextualizationProvider implements AgentProvider<Contextual
 
 export class AnthropicCapabilityReductionProvider implements AgentProvider<ReduceCapabilitiesInput, CapabilityReduction> {
   private readonly model = process.env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-latest";
-  private readonly promptVersion = "reduce.anthropic.v1";
 
   async execute(input: ReduceCapabilitiesInput): Promise<ProviderResult<CapabilityReduction>> {
     const startedAt = Date.now();
     const apiKey = requireKey("ANTHROPIC_API_KEY", "anthropic");
+    const isRecovery = Boolean(input.failure_analysis);
+    const promptVersion = isRecovery ? "reduce.anthropic.recovery.v1" : "reduce.anthropic.v1";
+    const content = isRecovery
+      ? [
+          "Revise the prior output only enough to satisfy the existing contract.",
+          "Do not add new requirements, evidence, capabilities, or architecture.",
+          "Every requirement_ref must use a supplied target requirement ID.",
+          "Every evidence_ref must use a supplied subject evidence ID.",
+          "Return the complete corrected CapabilityReduction object.",
+          JSON.stringify({
+            original_reduction_input: { contexts: input.contexts },
+            prior_raw_output: input.prior_raw_output,
+            deterministic_validation_error: input.structural_error,
+            openai_corrections: input.failure_analysis?.corrections,
+            existing_capability_schema: expectedCapabilityReductionSchema(),
+            valid_subject_evidence_ids: input.valid_subject_evidence_ids ?? [],
+            valid_target_requirement_ids: input.valid_target_requirement_ids ?? []
+          })
+        ].join("\n")
+      : [
+          "Return JSON only: { reducer:'capabilities', inputs:{subject,target}, capabilities:[...] }.",
+          "Each capability must map one target requirement to subject evidence refs.",
+          "Do not validate your own claims.",
+          JSON.stringify(input)
+        ].join("\n");
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -206,26 +232,21 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
         messages: [
           {
             role: "user",
-            content: [
-              "Return JSON only: { reducer:'capabilities', inputs:{subject,target}, capabilities:[...] }.",
-              "Each capability must map one target requirement to subject evidence refs.",
-              "Do not validate your own claims.",
-              JSON.stringify(input)
-            ].join("\n")
+            content
           }
         ]
       })
     });
 
     const raw = await response.json();
-    if (!response.ok) throw new ProviderExecutionError("anthropic", `Anthropic reduction failed with HTTP ${response.status}.`);
+    if (!response.ok) throw new ProviderExecutionError("anthropic", `Anthropic reduction failed with HTTP ${response.status}.`, raw);
     let output;
     try {
       output = validateReductionOutput(parseJsonObject(textFromAnthropicResponse(raw)), "anthropic");
     } catch (error) {
       throw new ProviderExecutionError("anthropic", error instanceof Error ? error.message : "Anthropic returned invalid structured output.", raw);
     }
-    return { output, raw_output: raw, provider: "anthropic", model: this.model, prompt_version: this.promptVersion, metrics: metricsFromUsage(startedAt, usageFromAnthropicResponse(raw)) };
+    return { output, raw_output: raw, provider: "anthropic", model: this.model, prompt_version: promptVersion, metrics: metricsFromUsage(startedAt, usageFromAnthropicResponse(raw)) };
   }
 }
 
@@ -254,7 +275,7 @@ export class OpenAIValidationProvider implements AgentProvider<ValidateCapabilit
     });
 
     const raw = await response.json();
-    if (!response.ok) throw new ProviderExecutionError("openai", `OpenAI validation failed with HTTP ${response.status}.`);
+    if (!response.ok) throw new ProviderExecutionError("openai", `OpenAI validation failed with HTTP ${response.status}.`, raw);
     let output;
     try {
       output = validateCapabilityValidationOutput(parseJsonObject(textFromOpenAIResponse(raw)), "openai");
@@ -263,4 +284,66 @@ export class OpenAIValidationProvider implements AgentProvider<ValidateCapabilit
     }
     return { output, raw_output: raw, provider: "openai", model: this.model, prompt_version: this.promptVersion, metrics: metricsFromUsage(startedAt, usageFromOpenAIResponse(raw)) };
   }
+}
+
+export class OpenAIFailureAnalysisProvider implements AgentProvider<FailureAnalysisInput, FailureAnalysis> {
+  private readonly model = process.env.OPENAI_MODEL ?? "gpt-4.1-mini";
+  private readonly promptVersion = "failure-analysis.openai.v1";
+
+  async execute(input: FailureAnalysisInput): Promise<ProviderResult<FailureAnalysis>> {
+    const startedAt = Date.now();
+    const apiKey = requireKey("OPENAI_API_KEY", "openai");
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: this.model,
+        input: [
+          "Analyze a malformed Corus inter-agent handoff.",
+          "Do not redesign schemas. Do not browse. Do not change product meaning.",
+          "Classify as correctable only when the correction preserves the existing schema and reducer semantics.",
+          "Return JSON only matching {status, failed_stage, failure_type, diagnosis, corrections, retry_stage, architecture_change_required, confidence}.",
+          JSON.stringify(input)
+        ].join("\n")
+      })
+    });
+
+    const raw = await response.json();
+    if (!response.ok) throw new ProviderExecutionError("openai", `OpenAI failure analysis failed with HTTP ${response.status}.`, raw);
+    let output;
+    try {
+      output = validateFailureAnalysisOutput(parseJsonObject(textFromOpenAIResponse(raw)), "openai");
+    } catch (error) {
+      throw new ProviderExecutionError("openai", error instanceof Error ? error.message : "OpenAI returned invalid failure-analysis output.", raw);
+    }
+    return { output, raw_output: raw, provider: "openai", model: this.model, prompt_version: this.promptVersion, metrics: metricsFromUsage(startedAt, usageFromOpenAIResponse(raw)) };
+  }
+}
+
+export function expectedCapabilityReductionSchema(): Record<string, unknown> {
+  return {
+    reducer: "capabilities",
+    inputs: {
+      subject: "string",
+      target: "string"
+    },
+    capabilities: [
+      {
+        id: "string",
+        requirement_ref: "string",
+        statement: "string",
+        evidence_refs: ["string"],
+        support: "supported | adjacent | unsupported | unknown",
+        confidence: "high | medium | low",
+        generated_by: {
+          provider: "string",
+          model: "string",
+          prompt_version: "string"
+        }
+      }
+    ]
+  };
 }

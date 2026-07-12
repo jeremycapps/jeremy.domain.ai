@@ -19,7 +19,13 @@ import { evaluateCapabilityRun, classifyHallucinations, runProphetFixtureEvaluat
 import { runCapabilityAnalysis, structuredProviderError } from "../src/lib/corusOrchestrator.js";
 import { validateProjectionNoInvention } from "../src/lib/corusProjection.js";
 import { providerReadiness } from "../src/providers/liveProviders.js";
-import { MockCapabilityReductionProvider, MockContextualizationProvider, MockValidationProvider } from "../src/providers/mockProviders.js";
+import {
+  MockCapabilityReductionProvider,
+  MockContextualizationProvider,
+  MockFailureAnalysisProvider,
+  MockMalformedReductionProvider,
+  MockValidationProvider
+} from "../src/providers/mockProviders.js";
 import { ProviderExecutionError } from "../src/providers/errors.js";
 
 async function tempRoot() {
@@ -137,7 +143,7 @@ test("the capabilities reducer receives both named context positions", async () 
   const reducer = new MockCapabilityReductionProvider();
   await runCapabilityAnalysis(
     { subject_source: source("subject"), target_source: source("target"), mode: "mocked" },
-    { root, providers: { contextualizer: new MockContextualizationProvider(), reducer, validator: new MockValidationProvider() } }
+    { root, providers: { contextualizer: new MockContextualizationProvider(), reducer, failureAnalyzer: new MockFailureAnalysisProvider(), validator: new MockValidationProvider() } }
   );
   assert.equal(reducer.calls[0].contexts.subject.kind, "subject");
   assert.equal(reducer.calls[0].contexts.target.kind, "target");
@@ -194,7 +200,7 @@ test("a revise result invokes Claude revision no more than once", async () => {
   ]);
   const run = await runCapabilityAnalysis(
     { subject_source: source("subject"), target_source: source("target"), mode: "mocked" },
-    { root, providers: { contextualizer: new MockContextualizationProvider(), reducer, validator } }
+    { root, providers: { contextualizer: new MockContextualizationProvider(), reducer, failureAnalyzer: new MockFailureAnalysisProvider(), validator } }
   );
   assert.equal(run.status, "passed");
   assert.equal(reducer.calls.length, 2);
@@ -210,6 +216,7 @@ test("architect_required stops execution and returns an escalation", async () =>
       providers: {
         contextualizer: new MockContextualizationProvider(),
         reducer: new MockCapabilityReductionProvider(),
+        failureAnalyzer: new MockFailureAnalysisProvider(),
         validator: new MockValidationProvider({
           status: "architect_required",
           findings: [{ severity: "error", type: "product_ambiguity", message: "Schema meaning is ambiguous." }],
@@ -232,6 +239,7 @@ test("projection receives only validated capabilities", async () => {
       providers: {
         contextualizer: new MockContextualizationProvider(),
         reducer: new FixedReductionProvider(),
+        failureAnalyzer: new MockFailureAnalysisProvider(),
         validator: new MockValidationProvider({
           status: "passed",
           findings: [],
@@ -262,6 +270,132 @@ test("every stage writes a generation record", async () => {
   await fs.access(path.join(root, run.artifact_dir, "generation-records.json"));
 });
 
+test("malformed Claude reduction is persisted and routed to OpenAI failure analysis", async () => {
+  const root = await tempRoot();
+  const reducer = new MockMalformedReductionProvider("valid");
+  const failureAnalyzer = new MockFailureAnalysisProvider("correctable");
+  const run = await runCapabilityAnalysis(
+    { subject_source: source("subject"), target_source: source("target"), mode: "mocked" },
+    {
+      root,
+      providers: {
+        contextualizer: new MockContextualizationProvider(),
+        reducer,
+        failureAnalyzer,
+        validator: new MockValidationProvider()
+      }
+    }
+  );
+
+  assert.equal(run.status, "passed");
+  assert.equal(reducer.calls.length, 2);
+  assert.equal(failureAnalyzer.calls.length, 1);
+  assert.equal(run.handoff_failure?.failure_type, "schema_validation");
+  assert.equal(run.failure_analysis?.status, "correctable");
+  assert.deepEqual(failureAnalyzer.calls[0].valid_subject_evidence_ids, ["evidence_product_execution"]);
+  assert.deepEqual(failureAnalyzer.calls[0].valid_target_requirement_ids, ["requirement_product_execution"]);
+  assert.ok(failureAnalyzer.calls[0].raw_provider_output);
+  await fs.access(path.join(root, run.artifact_dir, "raw-02-capability-reduction-attempt-1.json"));
+  await fs.access(path.join(root, run.artifact_dir, "02-capability-reduction-attempt-1-error.yaml"));
+  await fs.access(path.join(root, run.artifact_dir, "03-openai-failure-analysis.yaml"));
+  await fs.access(path.join(root, run.artifact_dir, "04-capabilities-recovered.yaml"));
+});
+
+test("correctable failure passes OpenAI correction to exactly one Claude retry without app field injection", async () => {
+  const root = await tempRoot();
+  const reducer = new MockMalformedReductionProvider("valid");
+  const run = await runCapabilityAnalysis(
+    { subject_source: source("subject"), target_source: source("target"), mode: "mocked" },
+    {
+      root,
+      providers: {
+        contextualizer: new MockContextualizationProvider(),
+        reducer,
+        failureAnalyzer: new MockFailureAnalysisProvider("correctable"),
+        validator: new MockValidationProvider()
+      }
+    }
+  );
+
+  assert.equal(reducer.calls.length, 2);
+  assert.equal(reducer.calls[1].failure_analysis?.corrections[0].field, "capabilities[].requirement_ref");
+  assert.equal(reducer.calls[1].prior_raw_output !== undefined, true);
+  assert.equal(run.capabilities[0].id, "cap_recovered");
+  assert.equal(run.capabilities[0].requirement_ref, "requirement_product_execution");
+});
+
+test("architect_required and unrecoverable failure analysis stop without retrying Claude", async () => {
+  for (const status of ["architect_required", "unrecoverable"] as const) {
+    const root = await tempRoot();
+    const reducer = new MockMalformedReductionProvider("valid");
+    const run = await runCapabilityAnalysis(
+      { subject_source: source("subject"), target_source: source("target"), mode: "mocked" },
+      {
+        root,
+        providers: {
+          contextualizer: new MockContextualizationProvider(),
+          reducer,
+          failureAnalyzer: new MockFailureAnalysisProvider(status),
+          validator: new MockValidationProvider()
+        }
+      }
+    );
+
+    assert.equal(reducer.calls.length, 1);
+    assert.equal(run.failure_analysis?.status, status);
+    assert.equal(run.projection, null);
+    assert.equal(run.generation_records.some((record) => record.type === "capability_validation"), false);
+  }
+});
+
+test("second malformed Claude response returns recovery_failed without another analysis call", async () => {
+  const root = await tempRoot();
+  const reducer = new MockMalformedReductionProvider("invalid");
+  const failureAnalyzer = new MockFailureAnalysisProvider("correctable");
+  const run = await runCapabilityAnalysis(
+    { subject_source: source("subject"), target_source: source("target"), mode: "mocked" },
+    {
+      root,
+      providers: {
+        contextualizer: new MockContextualizationProvider(),
+        reducer,
+        failureAnalyzer,
+        validator: new MockValidationProvider()
+      }
+    }
+  );
+
+  assert.equal(run.status, "recovery_failed");
+  assert.equal(reducer.calls.length, 2);
+  assert.equal(failureAnalyzer.calls.length, 1);
+  assert.equal(run.projection, null);
+  assert.equal(run.generation_records.some((record) => record.type === "capability_validation"), false);
+  await fs.access(path.join(root, run.artifact_dir, "04-capability-reduction-attempt-2-error.yaml"));
+});
+
+test("schema-valid retry proceeds to normal semantic validation with distinct records", async () => {
+  const root = await tempRoot();
+  const run = await runCapabilityAnalysis(
+    { subject_source: source("subject"), target_source: source("target"), mode: "mocked" },
+    {
+      root,
+      providers: {
+        contextualizer: new MockContextualizationProvider(),
+        reducer: new MockMalformedReductionProvider("valid"),
+        failureAnalyzer: new MockFailureAnalysisProvider("correctable"),
+        validator: new MockValidationProvider()
+      }
+    }
+  );
+
+  assert.equal(run.status, "passed");
+  assert.ok(run.generation_records.some((record) => record.type === "failure_analysis"));
+  assert.ok(run.generation_records.some((record) => record.type === "capability_validation"));
+  assert.ok(run.generation_records.some((record) => record.type === "projection"));
+  await fs.access(path.join(root, run.artifact_dir, "05-semantic-validation.yaml"));
+  await fs.access(path.join(root, run.artifact_dir, "06-projection.md"));
+});
+
 test("provider failures return structured errors without secrets", async () => {
   let caught: unknown;
   try {
@@ -272,6 +406,7 @@ test("provider failures return structured errors without secrets", async () => {
           providers: {
             contextualizer: new FailingContextualizer(),
             reducer: new MockCapabilityReductionProvider(),
+            failureAnalyzer: new MockFailureAnalysisProvider(),
             validator: new MockValidationProvider()
           }
         }

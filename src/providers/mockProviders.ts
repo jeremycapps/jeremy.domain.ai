@@ -5,6 +5,8 @@ import type {
   CapabilityValidation,
   Context,
   ContextualizeInput,
+  FailureAnalysis,
+  FailureAnalysisInput,
   ProviderResult,
   ReduceCapabilitiesInput,
   ValidateCapabilitiesInput,
@@ -12,6 +14,7 @@ import type {
 } from "../types.js";
 import { contextRefs, normalizeContext } from "../lib/corusContext.js";
 import { emptyMetrics } from "./providerUtils.js";
+import { ProviderExecutionError } from "./errors.js";
 
 function providerResult<T>(output: T, provider: string, model: string, promptVersion: string, startedAt: number): ProviderResult<T> {
   return {
@@ -86,6 +89,56 @@ export class MockCapabilityReductionProvider implements AgentProvider<ReduceCapa
   }
 }
 
+export class MockMalformedReductionProvider implements AgentProvider<ReduceCapabilitiesInput, CapabilityReduction> {
+  public calls: ReduceCapabilitiesInput[] = [];
+
+  constructor(
+    private readonly retryMode: "valid" | "invalid" = "valid",
+    private readonly rawOutput: unknown = {
+      reducer: "capabilities",
+      inputs: { subject: "jeremy", target: "prophet_role" },
+      capabilities: [{ id: "cap_missing_requirement", statement: "Malformed", evidence_refs: ["evidence_product_execution"], support: "supported", confidence: "high" }]
+    }
+  ) {}
+
+  async execute(input: ReduceCapabilitiesInput): Promise<ProviderResult<CapabilityReduction>> {
+    const startedAt = Date.now();
+    this.calls.push(input);
+    if (!input.failure_analysis || this.retryMode === "invalid") {
+      throw new ProviderExecutionError("anthropic", "Each capability must include requirement_ref.", this.rawOutput);
+    }
+
+    return providerResult(
+      {
+        reducer: "capabilities",
+        inputs: {
+          subject: input.contexts.subject.id,
+          target: input.contexts.target.id
+        },
+        capabilities: [
+          {
+            id: "cap_recovered",
+            requirement_ref: input.valid_target_requirement_ids?.[0] ?? "requirement_product_execution",
+            statement: "Recovered capability preserves the existing contract.",
+            evidence_refs: [input.valid_subject_evidence_ids?.[0] ?? "evidence_product_execution"],
+            support: "supported",
+            confidence: "high",
+            generated_by: {
+              provider: "anthropic",
+              model: "mock-claude-reducer",
+              prompt_version: "reduce.anthropic.recovery.v1"
+            }
+          }
+        ]
+      },
+      "anthropic",
+      "mock-claude-reducer",
+      "reduce.anthropic.recovery.v1",
+      startedAt
+    );
+  }
+}
+
 export class MockValidationProvider implements AgentProvider<ValidateCapabilitiesInput, CapabilityValidation> {
   constructor(private readonly forced?: CapabilityValidation) {}
 
@@ -141,6 +194,31 @@ export class MockValidationProvider implements AgentProvider<ValidateCapabilitie
     };
 
     return providerResult(output, "openai", "mock-openai-validator", "validate.mock.v1", startedAt);
+  }
+}
+
+export class MockFailureAnalysisProvider implements AgentProvider<FailureAnalysisInput, FailureAnalysis> {
+  public calls: FailureAnalysisInput[] = [];
+
+  constructor(private readonly status: FailureAnalysis["status"] = "correctable") {}
+
+  async execute(input: FailureAnalysisInput): Promise<ProviderResult<FailureAnalysis>> {
+    const startedAt = Date.now();
+    this.calls.push(input);
+    const output: FailureAnalysis = {
+      status: this.status,
+      failed_stage: "capability_reduction",
+      failure_type: "schema_validation",
+      diagnosis: "Claude omitted a required capability field.",
+      corrections:
+        this.status === "correctable"
+          ? [{ field: "capabilities[].requirement_ref", instruction: "Use one supplied target requirement ID.", reason: "The schema requires requirement_ref." }]
+          : [],
+      retry_stage: this.status === "correctable" ? "capability_reduction" : null,
+      architecture_change_required: this.status === "architect_required",
+      confidence: "high"
+    };
+    return providerResult(output, "openai", "mock-openai-failure-analyzer", "failure-analysis.mock.v1", startedAt);
   }
 }
 
