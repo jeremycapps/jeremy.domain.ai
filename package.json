@@ -7,7 +7,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
-    "test": "npm run build && node --test dist/test/*.test.js"
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "live:prophet": "tsx scripts/runLiveProphetEvaluation.ts"
   },
   "dependencies": {
     "yaml": "^2.5.1"

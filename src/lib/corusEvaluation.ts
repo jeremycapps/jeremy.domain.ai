@@ -252,7 +252,7 @@ export function evaluateCapabilityRun(input: {
   };
 }
 
-export async function runProphetFixtureEvaluation(root = getProjectRoot()): Promise<EvaluationReport> {
+export async function runProphetFixtureEvaluation(root = getProjectRoot(), mode: "mocked" | "fixture" | "live" = "fixture"): Promise<EvaluationReport> {
   const fixtureRoot = path.join(root, "test", "fixtures", "prophet");
   const baselineRef = "test/fixtures/prophet/jeremy_prophet_senior_product_manager_capabilities.yaml";
   const run = await runCapabilityAnalysis(
@@ -260,7 +260,7 @@ export async function runProphetFixtureEvaluation(root = getProjectRoot()): Prom
       subject_source: "test/fixtures/prophet/jeremy_corus.yaml",
       target_source: "test/fixtures/prophet/prophet_senior_product_manager.yaml",
       projection: "capability_assessment",
-      mode: "fixture"
+      mode
     },
     { root }
   );

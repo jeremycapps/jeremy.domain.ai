@@ -8,11 +8,20 @@ import type {
   Context,
   ContextualizeInput,
   CorusExecutionMode,
+  ProviderResult,
   ReduceCapabilitiesInput,
   ValidateCapabilitiesInput
 } from "../types.js";
 import { readSourceInput, sourceRefFromInput } from "./corusContext.js";
-import { artifactRef, createRunDirectory, stageRecord, writeGenerationRecords, writeMarkdownArtifact, writeYamlArtifact } from "./corusArtifacts.js";
+import {
+  artifactRef,
+  createRunDirectory,
+  stageRecord,
+  writeGenerationRecords,
+  writeJsonArtifact,
+  writeMarkdownArtifact,
+  writeYamlArtifact
+} from "./corusArtifacts.js";
 import { projectValidatedCapabilities } from "./corusProjection.js";
 import { getProjectRoot } from "./paths.js";
 import { MockCapabilityReductionProvider, MockContextualizationProvider, MockValidationProvider } from "../providers/mockProviders.js";
@@ -23,6 +32,28 @@ export interface CapabilityProviders {
   contextualizer: AgentProvider<ContextualizeInput, Context>;
   reducer: AgentProvider<ReduceCapabilitiesInput, CapabilityReduction>;
   validator: AgentProvider<ValidateCapabilitiesInput, CapabilityValidation>;
+}
+
+async function executeProviderStage<T>(
+  outputDir: string,
+  rawErrorFilename: string,
+  operation: () => Promise<ProviderResult<T>>
+): Promise<ProviderResult<T>> {
+  try {
+    return await operation();
+  } catch (error) {
+    const rawOutput = error instanceof ProviderExecutionError ? error.raw_output : undefined;
+    if (rawOutput !== undefined) {
+      await writeJsonArtifact(outputDir, rawErrorFilename, rawOutput);
+    }
+    await writeYamlArtifact(outputDir, rawErrorFilename.replace(/^raw-/, "error-").replace(/\.json$/, ".yaml"), {
+      created_at: new Date().toISOString(),
+      status: "error",
+      provider: error instanceof ProviderExecutionError ? error.provider : undefined,
+      message: error instanceof Error ? error.message : "Unknown provider error."
+    });
+    throw error;
+  }
 }
 
 export function providersForMode(mode: CorusExecutionMode): CapabilityProviders {
@@ -85,18 +116,24 @@ export async function runCapabilityAnalysis(
   const subjectSource = await readSourceInput(request.subject_source, root);
   const targetSource = await readSourceInput(request.target_source, root);
 
-  const subjectResult = await providers.contextualizer.execute({
-    source: subjectSource,
-    kind: "subject",
-    position: "subject",
-    input_ref: subjectRef
-  });
+  const subjectResult = await executeProviderStage(outputDir, "raw-01-subject-context-provider-error.json", () =>
+    providers.contextualizer.execute({
+      source: subjectSource,
+      kind: "subject",
+      position: "subject",
+      input_ref: subjectRef
+    })
+  );
   const subjectArtifact = await writeYamlArtifact(outputDir, "01-subject-context.yaml", { context: subjectResult.output });
+  const subjectRawArtifact = subjectResult.raw_output
+    ? await writeJsonArtifact(outputDir, "raw-01-subject-context-provider.json", subjectResult.raw_output)
+    : undefined;
   records.push(
     stageRecord({
       type: "contextualization",
       input_refs: [subjectRef],
       output_ref: artifactRef(root, subjectArtifact),
+      raw_output_ref: subjectRawArtifact ? artifactRef(root, subjectRawArtifact) : undefined,
       provider: subjectResult.provider,
       model: subjectResult.model,
       prompt_version: subjectResult.prompt_version,
@@ -106,18 +143,24 @@ export async function runCapabilityAnalysis(
     })
   );
 
-  const targetResult = await providers.contextualizer.execute({
-    source: targetSource,
-    kind: "target",
-    position: "target",
-    input_ref: targetRef
-  });
+  const targetResult = await executeProviderStage(outputDir, "raw-01-target-context-provider-error.json", () =>
+    providers.contextualizer.execute({
+      source: targetSource,
+      kind: "target",
+      position: "target",
+      input_ref: targetRef
+    })
+  );
   const targetArtifact = await writeYamlArtifact(outputDir, "01-target-context.yaml", { context: targetResult.output });
+  const targetRawArtifact = targetResult.raw_output
+    ? await writeJsonArtifact(outputDir, "raw-01-target-context-provider.json", targetResult.raw_output)
+    : undefined;
   records.push(
     stageRecord({
       type: "contextualization",
       input_refs: [targetRef],
       output_ref: artifactRef(root, targetArtifact),
+      raw_output_ref: targetRawArtifact ? artifactRef(root, targetRawArtifact) : undefined,
       provider: targetResult.provider,
       model: targetResult.model,
       prompt_version: targetResult.prompt_version,
@@ -127,14 +170,20 @@ export async function runCapabilityAnalysis(
     })
   );
 
-  const reductionResult = await providers.reducer.execute({ contexts: { subject: subjectResult.output, target: targetResult.output } });
+  const reductionResult = await executeProviderStage(outputDir, "raw-02-capabilities-provider-error.json", () =>
+    providers.reducer.execute({ contexts: { subject: subjectResult.output, target: targetResult.output } })
+  );
   let reduction = reductionResult.output;
   let capabilitiesArtifact = await writeYamlArtifact(outputDir, "02-capabilities.yaml", reduction);
+  let reductionRawArtifact = reductionResult.raw_output
+    ? await writeJsonArtifact(outputDir, "raw-02-capabilities-provider.json", reductionResult.raw_output)
+    : undefined;
   records.push(
     stageRecord({
       type: "capability_reduction",
       input_refs: [artifactRef(root, subjectArtifact), artifactRef(root, targetArtifact)],
       output_ref: artifactRef(root, capabilitiesArtifact),
+      raw_output_ref: reductionRawArtifact ? artifactRef(root, reductionRawArtifact) : undefined,
       provider: reductionResult.provider,
       model: reductionResult.model,
       prompt_version: reductionResult.prompt_version,
@@ -144,17 +193,23 @@ export async function runCapabilityAnalysis(
     })
   );
 
-  let validationResult = await providers.validator.execute({
-    capabilities: reduction.capabilities,
-    contexts: { subject: subjectResult.output, target: targetResult.output }
-  });
+  let validationResult = await executeProviderStage(outputDir, "raw-03-validation-provider-error.json", () =>
+    providers.validator.execute({
+      capabilities: reduction.capabilities,
+      contexts: { subject: subjectResult.output, target: targetResult.output }
+    })
+  );
   let validation = validationResult.output;
   let validationArtifact = await writeYamlArtifact(outputDir, "03-validation.yaml", { validation });
+  let validationRawArtifact = validationResult.raw_output
+    ? await writeJsonArtifact(outputDir, "raw-03-validation-provider.json", validationResult.raw_output)
+    : undefined;
   records.push(
     stageRecord({
       type: "capability_validation",
       input_refs: [artifactRef(root, capabilitiesArtifact), artifactRef(root, subjectArtifact), artifactRef(root, targetArtifact)],
       output_ref: artifactRef(root, validationArtifact),
+      raw_output_ref: validationRawArtifact ? artifactRef(root, validationRawArtifact) : undefined,
       provider: validationResult.provider,
       model: validationResult.model,
       prompt_version: validationResult.prompt_version,
@@ -165,18 +220,24 @@ export async function runCapabilityAnalysis(
   );
 
   if (validation.status === "revise") {
-    const revisedReduction = await providers.reducer.execute({
-      contexts: { subject: subjectResult.output, target: targetResult.output },
-      previous_capabilities: reduction.capabilities,
-      revision_findings: validation.findings
-    });
+    const revisedReduction = await executeProviderStage(outputDir, "raw-02-capabilities-revision-provider-error.json", () =>
+      providers.reducer.execute({
+        contexts: { subject: subjectResult.output, target: targetResult.output },
+        previous_capabilities: reduction.capabilities,
+        revision_findings: validation.findings
+      })
+    );
     reduction = revisedReduction.output;
     capabilitiesArtifact = await writeYamlArtifact(outputDir, "02-capabilities.yaml", reduction);
+    reductionRawArtifact = revisedReduction.raw_output
+      ? await writeJsonArtifact(outputDir, "raw-02-capabilities-revision-provider.json", revisedReduction.raw_output)
+      : undefined;
     records.push(
       stageRecord({
         type: "capability_reduction",
         input_refs: [artifactRef(root, validationArtifact)],
         output_ref: artifactRef(root, capabilitiesArtifact),
+        raw_output_ref: reductionRawArtifact ? artifactRef(root, reductionRawArtifact) : undefined,
         provider: revisedReduction.provider,
         model: revisedReduction.model,
         prompt_version: revisedReduction.prompt_version,
@@ -186,17 +247,23 @@ export async function runCapabilityAnalysis(
       })
     );
 
-    validationResult = await providers.validator.execute({
-      capabilities: reduction.capabilities,
-      contexts: { subject: subjectResult.output, target: targetResult.output }
-    });
+    validationResult = await executeProviderStage(outputDir, "raw-03-validation-revision-provider-error.json", () =>
+      providers.validator.execute({
+        capabilities: reduction.capabilities,
+        contexts: { subject: subjectResult.output, target: targetResult.output }
+      })
+    );
     validation = validationResult.output;
     validationArtifact = await writeYamlArtifact(outputDir, "03-validation.yaml", { validation });
+    validationRawArtifact = validationResult.raw_output
+      ? await writeJsonArtifact(outputDir, "raw-03-validation-revision-provider.json", validationResult.raw_output)
+      : undefined;
     records.push(
       stageRecord({
         type: "capability_validation",
         input_refs: [artifactRef(root, capabilitiesArtifact), artifactRef(root, subjectArtifact), artifactRef(root, targetArtifact)],
         output_ref: artifactRef(root, validationArtifact),
+        raw_output_ref: validationRawArtifact ? artifactRef(root, validationRawArtifact) : undefined,
         provider: validationResult.provider,
         model: validationResult.model,
         prompt_version: validationResult.prompt_version,

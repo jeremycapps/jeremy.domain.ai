@@ -11,7 +11,8 @@ export class ProviderConfigurationError extends Error {
 export class ProviderExecutionError extends Error {
   constructor(
     public readonly provider: string,
-    message: string
+    message: string,
+    public readonly raw_output?: unknown
   ) {
     super(message);
     this.name = "ProviderExecutionError";

@@ -5,13 +5,15 @@ import type {
   Context,
   ContextualizeInput,
   ProviderReadiness,
+  ProviderModelAvailability,
   ProviderResult,
   ReduceCapabilitiesInput,
   ValidateCapabilitiesInput
 } from "../types.js";
 import { normalizeContext } from "../lib/corusContext.js";
 import { ProviderConfigurationError, ProviderExecutionError } from "./errors.js";
-import { emptyMetrics, parseJsonObject } from "./providerUtils.js";
+import { metricsFromUsage, parseJsonObject } from "./providerUtils.js";
+import { validateCapabilityValidationOutput, validateContextOutput, validateReductionOutput } from "./validators.js";
 
 function requireKey(name: string, provider: string): string {
   const value = process.env[name];
@@ -26,6 +28,18 @@ function textFromOpenAIResponse(data: unknown): string {
     return (data as { output_text: string }).output_text;
   }
   return JSON.stringify(data);
+}
+
+function usageFromOpenAIResponse(data: unknown): unknown {
+  return data && typeof data === "object" ? (data as { usage?: unknown }).usage : null;
+}
+
+function usageFromGeminiResponse(data: unknown): unknown {
+  return data && typeof data === "object" ? (data as { usageMetadata?: unknown }).usageMetadata : null;
+}
+
+function usageFromAnthropicResponse(data: unknown): unknown {
+  return data && typeof data === "object" ? (data as { usage?: unknown }).usage : null;
 }
 
 function textFromGeminiResponse(data: unknown): string {
@@ -56,6 +70,70 @@ export function providerReadiness(mode: "mocked" | "fixture" | "live"): Provider
     missing_credentials: missing,
     required_credentials: required
   };
+}
+
+function modelNameFromGemini(name: string): string {
+  return name.startsWith("models/") ? name.slice("models/".length) : name;
+}
+
+export function configuredModelIds() {
+  return {
+    google: process.env.GEMINI_MODEL ?? "gemini-1.5-flash",
+    anthropic: process.env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-latest",
+    openai: process.env.OPENAI_MODEL ?? "gpt-4.1-mini"
+  };
+}
+
+export async function checkConfiguredModels(): Promise<ProviderModelAvailability[]> {
+  const models = configuredModelIds();
+  const checks: ProviderModelAvailability[] = [];
+
+  try {
+    const apiKey = requireKey("GEMINI_API_KEY", "google");
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = (await response.json()) as { models?: Array<{ name?: string; supportedGenerationMethods?: string[] }> };
+    const available = (data.models ?? []).some(
+      (model) => model.name && modelNameFromGemini(model.name) === models.google && model.supportedGenerationMethods?.includes("generateContent")
+    );
+    checks.push({ provider: "google", model: models.google, available, checked: true });
+  } catch (error) {
+    checks.push({ provider: "google", model: models.google, available: false, checked: false, error: error instanceof Error ? error.message : "unknown" });
+  }
+
+  try {
+    const apiKey = requireKey("ANTHROPIC_API_KEY", "anthropic");
+    const response = await fetch("https://api.anthropic.com/v1/models", {
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" }
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = (await response.json()) as { data?: Array<{ id?: string }> };
+    const available = (data.data ?? []).some((model) => model.id === models.anthropic);
+    checks.push({ provider: "anthropic", model: models.anthropic, available, checked: true });
+  } catch (error) {
+    checks.push({
+      provider: "anthropic",
+      model: models.anthropic,
+      available: false,
+      checked: false,
+      error: error instanceof Error ? error.message : "unknown"
+    });
+  }
+
+  try {
+    const apiKey = requireKey("OPENAI_API_KEY", "openai");
+    const response = await fetch("https://api.openai.com/v1/models", {
+      headers: { Authorization: `Bearer ${apiKey}` }
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = (await response.json()) as { data?: Array<{ id?: string }> };
+    const available = (data.data ?? []).some((model) => model.id === models.openai);
+    checks.push({ provider: "openai", model: models.openai, available, checked: true });
+  } catch (error) {
+    checks.push({ provider: "openai", model: models.openai, available: false, checked: false, error: error instanceof Error ? error.message : "unknown" });
+  }
+
+  return checks;
 }
 
 export class GeminiContextualizationProvider implements AgentProvider<ContextualizeInput, Context> {
@@ -92,13 +170,19 @@ export class GeminiContextualizationProvider implements AgentProvider<Contextual
       }
     );
 
+    const raw = await response.json();
     if (!response.ok) throw new ProviderExecutionError("google", `Gemini contextualization failed with HTTP ${response.status}.`);
-    const parsed = parseJsonObject(textFromGeminiResponse(await response.json()));
-    const output = normalizeContext(parsed, input.kind, input.position, input.input_ref);
+    let output;
+    try {
+      const parsed = parseJsonObject(textFromGeminiResponse(raw));
+      output = validateContextOutput(normalizeContext(parsed, input.kind, input.position, input.input_ref), "google");
+    } catch (error) {
+      throw new ProviderExecutionError("google", error instanceof Error ? error.message : "Gemini returned invalid structured output.", raw);
+    }
     output.generation.provider = "google";
     output.generation.model = this.model;
     output.generation.prompt_version = this.promptVersion;
-    return { output, provider: "google", model: this.model, prompt_version: this.promptVersion, metrics: emptyMetrics(startedAt) };
+    return { output, raw_output: raw, provider: "google", model: this.model, prompt_version: this.promptVersion, metrics: metricsFromUsage(startedAt, usageFromGeminiResponse(raw)) };
   }
 }
 
@@ -133,9 +217,15 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
       })
     });
 
+    const raw = await response.json();
     if (!response.ok) throw new ProviderExecutionError("anthropic", `Anthropic reduction failed with HTTP ${response.status}.`);
-    const output = parseJsonObject(textFromAnthropicResponse(await response.json())) as CapabilityReduction;
-    return { output, provider: "anthropic", model: this.model, prompt_version: this.promptVersion, metrics: emptyMetrics(startedAt) };
+    let output;
+    try {
+      output = validateReductionOutput(parseJsonObject(textFromAnthropicResponse(raw)), "anthropic");
+    } catch (error) {
+      throw new ProviderExecutionError("anthropic", error instanceof Error ? error.message : "Anthropic returned invalid structured output.", raw);
+    }
+    return { output, raw_output: raw, provider: "anthropic", model: this.model, prompt_version: this.promptVersion, metrics: metricsFromUsage(startedAt, usageFromAnthropicResponse(raw)) };
   }
 }
 
@@ -163,8 +253,14 @@ export class OpenAIValidationProvider implements AgentProvider<ValidateCapabilit
       })
     });
 
+    const raw = await response.json();
     if (!response.ok) throw new ProviderExecutionError("openai", `OpenAI validation failed with HTTP ${response.status}.`);
-    const output = parseJsonObject(textFromOpenAIResponse(await response.json())) as CapabilityValidation;
-    return { output, provider: "openai", model: this.model, prompt_version: this.promptVersion, metrics: emptyMetrics(startedAt) };
+    let output;
+    try {
+      output = validateCapabilityValidationOutput(parseJsonObject(textFromOpenAIResponse(raw)), "openai");
+    } catch (error) {
+      throw new ProviderExecutionError("openai", error instanceof Error ? error.message : "OpenAI returned invalid structured output.", raw);
+    }
+    return { output, raw_output: raw, provider: "openai", model: this.model, prompt_version: this.promptVersion, metrics: metricsFromUsage(startedAt, usageFromOpenAIResponse(raw)) };
   }
 }

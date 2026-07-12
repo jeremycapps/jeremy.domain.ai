@@ -23,10 +23,17 @@ export async function writeMarkdownArtifact(outputDir: string, filename: string,
   return filePath;
 }
 
+export async function writeJsonArtifact(outputDir: string, filename: string, value: unknown): Promise<string> {
+  const filePath = path.join(outputDir, filename);
+  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  return filePath;
+}
+
 export function stageRecord(input: {
   type: StageGenerationRecord["type"];
   input_refs: string[];
   output_ref: string;
+  raw_output_ref?: string;
   provider: string;
   model: string;
   prompt_version: string;

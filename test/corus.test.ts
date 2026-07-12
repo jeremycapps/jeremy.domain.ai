@@ -373,8 +373,7 @@ test("fixture and mocked runs are never labeled as live runs", async () => {
 });
 
 test("Prophet fixture can produce a baseline comparison report without live credentials", async () => {
-  const root = "/Users/jeremycapps/Dev/jeremy.domain.ai";
-  const report = await runProphetFixtureEvaluation(root);
+  const report = await runProphetFixtureEvaluation(process.cwd());
   assert.equal(report.evaluation.fixture, "prophet");
   assert.equal(typeof report.evaluation.quality.capability_recall, "number");
 });

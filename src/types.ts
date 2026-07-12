@@ -203,6 +203,7 @@ export interface StageGenerationRecord {
   created_at: string;
   input_refs: string[];
   output_ref: string;
+  raw_output_ref?: string;
   provider: string;
   model: string;
   prompt_version: string;
@@ -225,6 +226,7 @@ export interface ProviderMetrics {
 
 export interface ProviderResult<TOutput> {
   output: TOutput;
+  raw_output?: unknown;
   provider: string;
   model: string;
   prompt_version: string;
@@ -292,6 +294,14 @@ export interface ProviderReadiness {
   ready: boolean;
   missing_credentials: string[];
   required_credentials: string[];
+}
+
+export interface ProviderModelAvailability {
+  provider: string;
+  model: string;
+  available: boolean;
+  checked: boolean;
+  error?: string;
 }
 
 export interface EvaluationReport {

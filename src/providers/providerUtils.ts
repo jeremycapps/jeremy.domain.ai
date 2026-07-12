@@ -9,6 +9,33 @@ export function emptyMetrics(startedAt: number): ProviderMetrics {
   };
 }
 
+export function metricsFromUsage(startedAt: number, usage: unknown): ProviderMetrics {
+  const base = emptyMetrics(startedAt);
+  if (!usage || typeof usage !== "object") return base;
+  const record = usage as Record<string, unknown>;
+  const input =
+    typeof record.input_tokens === "number"
+      ? record.input_tokens
+      : typeof record.prompt_tokens === "number"
+        ? record.prompt_tokens
+        : typeof record.promptTokenCount === "number"
+          ? record.promptTokenCount
+          : null;
+  const output =
+    typeof record.output_tokens === "number"
+      ? record.output_tokens
+      : typeof record.completion_tokens === "number"
+        ? record.completion_tokens
+        : typeof record.candidatesTokenCount === "number"
+          ? record.candidatesTokenCount
+          : null;
+  return {
+    ...base,
+    input_tokens: input,
+    output_tokens: output
+  };
+}
+
 export function parseJsonObject(text: string): unknown {
   const trimmed = text.trim();
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
