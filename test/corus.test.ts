@@ -25,6 +25,7 @@ import { resumeFailureReroutingFromCheckpoint } from "../src/lib/corusCheckpoint
 import { validateProjectionNoInvention } from "../src/lib/corusProjection.js";
 import { classifyProviderFailure } from "../src/lib/providerFailureClassification.js";
 import { AnthropicCapabilityReductionProvider, capabilityReductionJsonSchema, providerReadiness } from "../src/providers/liveProviders.js";
+import { parseJsonObject, textFromOpenAIResponse } from "../src/providers/providerUtils.js";
 import {
   MockCapabilityReductionProvider,
   MockContextualizationProvider,
@@ -33,7 +34,7 @@ import {
   MockValidationProvider
 } from "../src/providers/mockProviders.js";
 import { ProviderExecutionError } from "../src/providers/errors.js";
-import { validateReductionReferences } from "../src/providers/validators.js";
+import { validateCapabilityValidationOutput, validateReductionReferences } from "../src/providers/validators.js";
 
 async function tempRoot() {
   return fs.mkdtemp(path.join(os.tmpdir(), "corus-test-"));
@@ -133,6 +134,18 @@ class FixedReductionProvider implements AgentProvider<ReduceCapabilitiesInput, C
 class FailingContextualizer implements AgentProvider<ContextualizeInput, Context> {
   async execute(): Promise<ProviderResult<Context>> {
     throw new ProviderExecutionError("google", "Gemini failed without exposing authorization headers.");
+  }
+}
+
+class ThrowingValidationProvider implements AgentProvider<ValidateCapabilitiesInput, CapabilityValidation> {
+  constructor(private readonly message: string, private readonly raw: unknown) {}
+  async execute(): Promise<ProviderResult<CapabilityValidation>> {
+    throw new ProviderExecutionError("openai", this.message, this.raw, {
+      model: "mock-openai",
+      prompt_version: "validate.openai.v1",
+      schema_version: "corus.validation.v1",
+      metrics: { input_tokens: 7, output_tokens: 11, estimated_cost_usd: null, latency_ms: 13 }
+    });
   }
 }
 
@@ -240,6 +253,29 @@ async function writeCheckpoint(root: string, runId = "checkpoint-run", openAiErr
     "utf8"
   );
   return { outputDir, runId };
+}
+
+function preservedAttempt2OpenAIValidationRaw(text: string) {
+  return {
+    status: "completed",
+    output: [
+      { id: "rs_sanitized", type: "reasoning", content: [], summary: [] },
+      {
+        id: "msg_sanitized",
+        type: "message",
+        status: "completed",
+        content: [{ type: "output_text", annotations: [], logprobs: [], text }],
+        phase: "final_answer",
+        role: "assistant"
+      }
+    ]
+  };
+}
+
+async function onlyRunDir(root: string): Promise<string> {
+  const dirs = await fs.readdir(path.join(root, "outputs"));
+  assert.equal(dirs.length, 1);
+  return path.join(root, "outputs", dirs[0]);
 }
 
 test("both subject and target load through the same Context shape", async () => {
@@ -595,6 +631,129 @@ test("deterministic reduction validation rejects structurally valid invalid cont
     () => validateReductionReferences(structurallyValidReduction, { subject: subjectContext, target: targetContext }, "anthropic"),
     /requirement_ref must match a target context id/
   );
+});
+
+test("OpenAI Responses extraction reads validation JSON from output content", () => {
+  const raw = preservedAttempt2OpenAIValidationRaw(
+    JSON.stringify({
+      status: "architect_required",
+      findings: [{ capability_id: "cap_maia_platform_technical_ownership", decision: "architect_required", reason: "Needs architect review." }],
+      validated_capability_ids: ["cap_platform_rollout_and_delivery_improvement"],
+      rejected_capability_ids: ["cap_operational_source_of_truth_for_platform_decisions"]
+    })
+  );
+  const validation = validateCapabilityValidationOutput(parseJsonObject(textFromOpenAIResponse(raw)), "openai");
+  assert.equal(validation.status, "architect_required");
+  assert.notEqual(validation.status, raw.status);
+});
+
+test("OpenAI extraction prefers output_text when present", () => {
+  const raw = {
+    output_text: JSON.stringify({ status: "passed", findings: [], validated_capability_ids: ["cap"], rejected_capability_ids: [] }),
+    status: "completed",
+    output: [
+      {
+        content: [
+          {
+            text: JSON.stringify({ status: "failed", findings: [], validated_capability_ids: [], rejected_capability_ids: ["cap"] })
+          }
+        ]
+      }
+    ]
+  };
+  const validation = validateCapabilityValidationOutput(parseJsonObject(textFromOpenAIResponse(raw)), "openai");
+  assert.equal(validation.status, "passed");
+});
+
+test("OpenAI outer API status is never treated as domain validation status", () => {
+  assert.throws(() => textFromOpenAIResponse({ status: "completed", output: [{ type: "reasoning", content: [] }] }), /did not contain assistant text/);
+});
+
+test("OpenAI extraction fails deterministically when assistant content is missing", () => {
+  assert.throws(() => textFromOpenAIResponse({ status: "completed", output: [] }), /did not contain assistant text/);
+});
+
+test("OpenAI extraction fails deterministically when inner JSON is malformed", () => {
+  const raw = preservedAttempt2OpenAIValidationRaw("{not-json");
+  assert.throws(() => parseJsonObject(textFromOpenAIResponse(raw)), /Expected property name|JSON/);
+});
+
+test("generation records survive validation parser failure", async () => {
+  const root = await tempRoot();
+  let caught: unknown;
+  try {
+    await runCapabilityAnalysis(
+      { subject_source: source("subject"), target_source: source("target"), mode: "mocked" },
+      {
+        root,
+        providers: {
+          contextualizer: new MockContextualizationProvider(),
+          reducer: new FixedReductionProvider(),
+          failureAnalyzer: new MockFailureAnalysisProvider(),
+          validator: new ThrowingValidationProvider("OpenAI response did not contain assistant text.", { status: "completed", output: [] })
+        }
+      }
+    );
+  } catch (error) {
+    caught = error;
+  }
+  assert.ok(caught instanceof ProviderExecutionError);
+  const runDir = await onlyRunDir(root);
+  const records = JSON.parse(await fs.readFile(path.join(runDir, "generation-records.json"), "utf8")) as Array<{ type: string; validation_status: string; metrics: { input_tokens: number | null; latency_ms: number } }>;
+  assert.ok(records.some((record) => record.type === "capability_validation" && record.validation_status === "error"));
+  assert.ok(records.some((record) => record.type === "capability_validation" && record.metrics.input_tokens === 7 && record.metrics.latency_ms === 13));
+});
+
+test("generation records survive validation validator failure", async () => {
+  const root = await tempRoot();
+  let caught: unknown;
+  try {
+    await runCapabilityAnalysis(
+      { subject_source: source("subject"), target_source: source("target"), mode: "mocked" },
+      {
+        root,
+        providers: {
+          contextualizer: new MockContextualizationProvider(),
+          reducer: new FixedReductionProvider(),
+          failureAnalyzer: new MockFailureAnalysisProvider(),
+          validator: new ThrowingValidationProvider(
+            "Validation output has invalid status.",
+            preservedAttempt2OpenAIValidationRaw(JSON.stringify({ status: "completed", findings: [], validated_capability_ids: [], rejected_capability_ids: [] }))
+          )
+        }
+      }
+    );
+  } catch (error) {
+    caught = error;
+  }
+  assert.ok(caught instanceof ProviderExecutionError);
+  const runDir = await onlyRunDir(root);
+  const records = JSON.parse(await fs.readFile(path.join(runDir, "generation-records.json"), "utf8")) as Array<{ type: string; validation_status: string }>;
+  assert.ok(records.some((record) => record.type === "capability_validation" && record.validation_status === "error"));
+});
+
+test("generation records and architect artifact survive architect_required termination", async () => {
+  const root = await tempRoot();
+  const run = await runCapabilityAnalysis(
+    { subject_source: source("subject"), target_source: source("target"), mode: "mocked" },
+    {
+      root,
+      providers: {
+        contextualizer: new MockContextualizationProvider(),
+        reducer: new FixedReductionProvider(),
+        failureAnalyzer: new MockFailureAnalysisProvider(),
+        validator: new MockValidationProvider({
+          status: "architect_required",
+          findings: [{ severity: "error", type: "product_ambiguity", message: "Architect review required." }],
+          validated_capability_ids: [],
+          rejected_capability_ids: []
+        })
+      }
+    }
+  );
+  assert.equal(run.status, "architect_required");
+  await fs.access(path.join(root, run.artifact_dir, "generation-records.json"));
+  await fs.access(path.join(root, run.artifact_dir, "04-architect-decision.yaml"));
 });
 
 test("checkpoint resume skips Gemini and initial Claude while retrying only OpenAI failure analysis", async () => {

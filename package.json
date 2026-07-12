@@ -10,7 +10,8 @@
     "test": "npm run build && node --test dist/test/*.test.js",
     "live:prophet": "tsx scripts/runLiveProphetEvaluation.ts",
     "live:resume-failure-rerouting": "tsx scripts/resumeFailureRerouting.ts",
-    "live:prophet:attempt2": "tsx scripts/runLiveProphetAttempt2.ts"
+    "live:prophet:attempt2": "tsx scripts/runLiveProphetAttempt2.ts",
+    "checkpoint:attempt2:validation": "tsx scripts/reprocessAttempt2Validation.ts"
   },
   "dependencies": {
     "yaml": "^2.5.1"

@@ -49,3 +49,27 @@ export function parseJsonObject(text: string): unknown {
 
   throw new Error("Provider response did not contain a JSON object.");
 }
+
+export function textFromOpenAIResponse(data: unknown): string {
+  if (data && typeof data === "object" && typeof (data as { output_text?: unknown }).output_text === "string") {
+    return (data as { output_text: string }).output_text;
+  }
+
+  const output = data && typeof data === "object" ? (data as { output?: unknown }).output : undefined;
+  if (Array.isArray(output)) {
+    const texts: string[] = [];
+    for (const item of output) {
+      const content = item && typeof item === "object" ? (item as { content?: unknown }).content : undefined;
+      if (!Array.isArray(content)) continue;
+      for (const contentItem of content) {
+        if (contentItem && typeof contentItem === "object" && typeof (contentItem as { text?: unknown }).text === "string") {
+          texts.push((contentItem as { text: string }).text);
+        }
+      }
+    }
+    const joined = texts.join("");
+    if (joined.trim()) return joined;
+  }
+
+  throw new Error("OpenAI response did not contain assistant text.");
+}

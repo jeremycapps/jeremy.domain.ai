@@ -14,7 +14,7 @@ import type {
 } from "../types.js";
 import { normalizeContext } from "../lib/corusContext.js";
 import { ProviderConfigurationError, ProviderExecutionError } from "./errors.js";
-import { metricsFromUsage, parseJsonObject } from "./providerUtils.js";
+import { metricsFromUsage, parseJsonObject, textFromOpenAIResponse } from "./providerUtils.js";
 import {
   validateCapabilityValidationOutput,
   validateContextOutput,
@@ -29,13 +29,6 @@ function requireKey(name: string, provider: string): string {
     throw new ProviderConfigurationError(provider, `${name} is required for live mode.`);
   }
   return value;
-}
-
-function textFromOpenAIResponse(data: unknown): string {
-  if (data && typeof data === "object" && typeof (data as { output_text?: unknown }).output_text === "string") {
-    return (data as { output_text: string }).output_text;
-  }
-  return JSON.stringify(data);
 }
 
 function usageFromOpenAIResponse(data: unknown): unknown {
@@ -292,7 +285,12 @@ export class OpenAIValidationProvider implements AgentProvider<ValidateCapabilit
     try {
       output = validateCapabilityValidationOutput(parseJsonObject(textFromOpenAIResponse(raw)), "openai");
     } catch (error) {
-      throw new ProviderExecutionError("openai", error instanceof Error ? error.message : "OpenAI returned invalid structured output.", raw);
+      throw new ProviderExecutionError("openai", error instanceof Error ? error.message : "OpenAI returned invalid structured output.", raw, {
+        model: this.model,
+        prompt_version: this.promptVersion,
+        schema_version: "corus.validation.v1",
+        metrics: metricsFromUsage(startedAt, usageFromOpenAIResponse(raw))
+      });
     }
     return { output, raw_output: raw, provider: "openai", model: this.model, prompt_version: this.promptVersion, metrics: metricsFromUsage(startedAt, usageFromOpenAIResponse(raw)) };
   }
@@ -329,7 +327,12 @@ export class OpenAIFailureAnalysisProvider implements AgentProvider<FailureAnaly
     try {
       output = validateFailureAnalysisOutput(parseJsonObject(textFromOpenAIResponse(raw)), "openai");
     } catch (error) {
-      throw new ProviderExecutionError("openai", error instanceof Error ? error.message : "OpenAI returned invalid failure-analysis output.", raw);
+      throw new ProviderExecutionError("openai", error instanceof Error ? error.message : "OpenAI returned invalid failure-analysis output.", raw, {
+        model: this.model,
+        prompt_version: this.promptVersion,
+        schema_version: "corus.failure_analysis.v1",
+        metrics: metricsFromUsage(startedAt, usageFromOpenAIResponse(raw))
+      });
     }
     return { output, raw_output: raw, provider: "openai", model: this.model, prompt_version: this.promptVersion, metrics: metricsFromUsage(startedAt, usageFromOpenAIResponse(raw)) };
   }

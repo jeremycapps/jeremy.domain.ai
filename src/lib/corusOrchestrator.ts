@@ -48,7 +48,17 @@ export interface CapabilityProviders {
 async function executeProviderStage<T>(
   outputDir: string,
   rawErrorFilename: string,
-  operation: () => Promise<ProviderResult<T>>
+  operation: () => Promise<ProviderResult<T>>,
+  checkpoint?: {
+    root: string;
+    records: CapabilityAnalysisResponse["generation_records"];
+    type: CapabilityAnalysisResponse["generation_records"][number]["type"];
+    input_refs: string[];
+    provider: string;
+    model: string;
+    prompt_version: string;
+    schema_version: string;
+  }
 ): Promise<ProviderResult<T>> {
   try {
     return await operation();
@@ -63,8 +73,39 @@ async function executeProviderStage<T>(
       provider: error instanceof ProviderExecutionError ? error.provider : undefined,
       message: error instanceof Error ? error.message : "Unknown provider error."
     });
+    if (checkpoint) {
+      const metadata = error instanceof ProviderExecutionError ? error.metadata : undefined;
+      checkpoint.records.push(
+        stageRecord({
+          type: checkpoint.type,
+          input_refs: checkpoint.input_refs,
+          output_ref: artifactRef(checkpoint.root, pathFromOutputDir(outputDir, rawErrorFilename.replace(/^raw-/, "error-").replace(/\.json$/, ".yaml"))),
+          raw_output_ref: rawOutput !== undefined ? artifactRef(checkpoint.root, pathFromOutputDir(outputDir, rawErrorFilename)) : undefined,
+          provider: error instanceof ProviderExecutionError ? error.provider : checkpoint.provider,
+          model: metadata?.model ?? checkpoint.model,
+          prompt_version: metadata?.prompt_version ?? checkpoint.prompt_version,
+          schema_version: metadata?.schema_version ?? checkpoint.schema_version,
+          validation_status: "error",
+          metrics: metadata?.metrics ?? { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: 0 }
+        })
+      );
+      await writeGenerationRecords(outputDir, checkpoint.records);
+    }
     throw error;
   }
+}
+
+function pathFromOutputDir(outputDir: string, filename: string): string {
+  return `${outputDir}/${filename}`;
+}
+
+async function checkpointRecord(
+  outputDir: string,
+  records: CapabilityAnalysisResponse["generation_records"],
+  record: CapabilityAnalysisResponse["generation_records"][number]
+) {
+  records.push(record);
+  await writeGenerationRecords(outputDir, records);
 }
 
 export function providersForMode(mode: CorusExecutionMode): CapabilityProviders {
@@ -184,7 +225,9 @@ export async function runCapabilityAnalysis(
   const subjectRawArtifact = subjectResult.raw_output
     ? await writeJsonArtifact(outputDir, "raw-01-subject-context-provider.json", subjectResult.raw_output)
     : undefined;
-  records.push(
+  await checkpointRecord(
+    outputDir,
+    records,
     stageRecord({
       type: "contextualization",
       input_refs: [subjectRef],
@@ -211,7 +254,9 @@ export async function runCapabilityAnalysis(
   const targetRawArtifact = targetResult.raw_output
     ? await writeJsonArtifact(outputDir, "raw-01-target-context-provider.json", targetResult.raw_output)
     : undefined;
-  records.push(
+  await checkpointRecord(
+    outputDir,
+    records,
     stageRecord({
       type: "contextualization",
       input_refs: [targetRef],
@@ -244,7 +289,9 @@ export async function runCapabilityAnalysis(
       targetArtifact
     });
     handoffFailure = persistedFailure.handoffFailure;
-    records.push(
+    await checkpointRecord(
+      outputDir,
+      records,
       stageRecord({
         type: "capability_reduction",
         input_refs: [artifactRef(root, subjectArtifact), artifactRef(root, targetArtifact)],
@@ -279,7 +326,9 @@ export async function runCapabilityAnalysis(
         provider: analysisError instanceof ProviderExecutionError ? analysisError.provider : undefined,
         message: analysisError instanceof Error ? analysisError.message : "Unknown failure-analysis error."
       });
-      records.push(
+      await checkpointRecord(
+        outputDir,
+        records,
         stageRecord({
           type: "failure_analysis",
           input_refs: [persistedFailure.errorRef, persistedFailure.rawOutputRef],
@@ -312,7 +361,9 @@ export async function runCapabilityAnalysis(
     const failureAnalysisRawArtifact = failureAnalysisResult.raw_output
       ? await writeJsonArtifact(outputDir, "raw-03-openai-failure-analysis-provider.json", failureAnalysisResult.raw_output)
       : undefined;
-    records.push(
+    await checkpointRecord(
+      outputDir,
+      records,
       stageRecord({
         type: "failure_analysis",
         input_refs: [persistedFailure.errorRef, persistedFailure.rawOutputRef],
@@ -365,7 +416,9 @@ export async function runCapabilityAnalysis(
         subjectArtifact,
         targetArtifact
       });
-      records.push(
+      await checkpointRecord(
+        outputDir,
+        records,
         stageRecord({
           type: "capability_reduction",
           input_refs: [artifactRef(root, subjectArtifact), artifactRef(root, targetArtifact), artifactRef(root, failureAnalysisArtifact)],
@@ -400,7 +453,9 @@ export async function runCapabilityAnalysis(
   let reductionRawArtifact = reductionResult.raw_output
     ? await writeJsonArtifact(outputDir, handoffFailure ? "raw-04-capability-reduction-attempt-2.json" : "raw-02-capabilities-provider.json", reductionResult.raw_output)
     : undefined;
-  records.push(
+  await checkpointRecord(
+    outputDir,
+    records,
     stageRecord({
       type: "capability_reduction",
       input_refs: [artifactRef(root, subjectArtifact), artifactRef(root, targetArtifact)],
@@ -419,14 +474,26 @@ export async function runCapabilityAnalysis(
     providers.validator.execute({
       capabilities: reduction.capabilities,
       contexts: { subject: subjectResult.output, target: targetResult.output }
-    })
+    }),
+    {
+      root,
+      records,
+      type: "capability_validation",
+      input_refs: [artifactRef(root, capabilitiesArtifact), artifactRef(root, subjectArtifact), artifactRef(root, targetArtifact)],
+      provider: "openai",
+      model: "unknown",
+      prompt_version: "validate.openai.v1",
+      schema_version: "corus.validation.v1"
+    }
   );
   let validation = validationResult.output;
   let validationArtifact = await writeYamlArtifact(outputDir, handoffFailure ? "05-semantic-validation.yaml" : "03-validation.yaml", { validation });
   let validationRawArtifact = validationResult.raw_output
     ? await writeJsonArtifact(outputDir, handoffFailure ? "raw-05-semantic-validation-provider.json" : "raw-03-validation-provider.json", validationResult.raw_output)
     : undefined;
-  records.push(
+  await checkpointRecord(
+    outputDir,
+    records,
     stageRecord({
       type: "capability_validation",
       input_refs: [artifactRef(root, capabilitiesArtifact), artifactRef(root, subjectArtifact), artifactRef(root, targetArtifact)],
@@ -447,14 +514,26 @@ export async function runCapabilityAnalysis(
         contexts: { subject: subjectResult.output, target: targetResult.output },
         previous_capabilities: reduction.capabilities,
         revision_findings: validation.findings
-      })
+      }),
+      {
+        root,
+        records,
+        type: "capability_reduction",
+        input_refs: [artifactRef(root, validationArtifact)],
+        provider: "anthropic",
+        model: "unknown",
+        prompt_version: "reduce.anthropic.v1",
+        schema_version: "corus.capabilities.v1"
+      }
     );
     reduction = revisedReduction.output;
     capabilitiesArtifact = await writeYamlArtifact(outputDir, "02-capabilities.yaml", reduction);
     reductionRawArtifact = revisedReduction.raw_output
       ? await writeJsonArtifact(outputDir, "raw-02-capabilities-revision-provider.json", revisedReduction.raw_output)
       : undefined;
-    records.push(
+    await checkpointRecord(
+      outputDir,
+      records,
       stageRecord({
         type: "capability_reduction",
         input_refs: [artifactRef(root, validationArtifact)],
@@ -473,14 +552,26 @@ export async function runCapabilityAnalysis(
       providers.validator.execute({
         capabilities: reduction.capabilities,
         contexts: { subject: subjectResult.output, target: targetResult.output }
-      })
+      }),
+      {
+        root,
+        records,
+        type: "capability_validation",
+        input_refs: [artifactRef(root, capabilitiesArtifact), artifactRef(root, subjectArtifact), artifactRef(root, targetArtifact)],
+        provider: "openai",
+        model: "unknown",
+        prompt_version: "validate.openai.v1",
+        schema_version: "corus.validation.v1"
+      }
     );
     validation = validationResult.output;
     validationArtifact = await writeYamlArtifact(outputDir, "03-validation.yaml", { validation });
     validationRawArtifact = validationResult.raw_output
       ? await writeJsonArtifact(outputDir, "raw-03-validation-revision-provider.json", validationResult.raw_output)
       : undefined;
-    records.push(
+    await checkpointRecord(
+      outputDir,
+      records,
       stageRecord({
         type: "capability_validation",
         input_refs: [artifactRef(root, capabilitiesArtifact), artifactRef(root, subjectArtifact), artifactRef(root, targetArtifact)],
@@ -496,7 +587,29 @@ export async function runCapabilityAnalysis(
     );
   }
 
-  if (validation.status === "architect_required" || validation.status === "failed") {
+  if (validation.status === "architect_required") {
+    await writeYamlArtifact(outputDir, handoffFailure ? "06-architect-decision.yaml" : "04-architect-decision.yaml", {
+      status: "architect_required",
+      validation,
+      decision: "Architect review required before semantic recommendation can be implemented."
+    });
+    await writeGenerationRecords(outputDir, records);
+    return failedResponse({
+      runId,
+      mode,
+      status: validation.status,
+      subject: subjectResult.output,
+      target: targetResult.output,
+      reduction,
+      validation,
+      artifactDir: artifactRef(root, outputDir),
+      records,
+      handoffFailure,
+      failureAnalysis
+    });
+  }
+
+  if (validation.status === "failed") {
     await writeGenerationRecords(outputDir, records);
     return failedResponse({
       runId,
@@ -532,7 +645,9 @@ export async function runCapabilityAnalysis(
 
   const projection = projectValidatedCapabilities(reduction.capabilities, validation, request.projection ?? "capability_assessment");
   const projectionArtifact = await writeMarkdownArtifact(outputDir, handoffFailure ? "06-projection.md" : "04-projection.md", projection.content);
-  records.push(
+  await checkpointRecord(
+    outputDir,
+    records,
     stageRecord({
       type: "projection",
       input_refs: [artifactRef(root, validationArtifact), artifactRef(root, capabilitiesArtifact)],
