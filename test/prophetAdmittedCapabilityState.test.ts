@@ -130,3 +130,32 @@ test("pre-filter artifacts are never resumed as valid filtered outputs", () => {
   assert.deepEqual(completedClusterIdsFromRecords(records), ["product_delivery_and_execution"]);
   assert.deepEqual(completedFilteredAttemptClusterIdsFromRecords(records), ["technical_product_fluency"]);
 });
+
+test("runtime-owned generated_by must match the generation record", () => {
+  const result = validateCapabilityEvidencePolicy({
+    clusterId: "product_delivery",
+    allowedRequirementIds: ["req_a"],
+    permittedEvidenceIds: ["direct"],
+    unresolvedEvidenceIds: [],
+    partialEvidenceIds: [],
+    generationRecord: { provider: "anthropic", model: "claude-sonnet-5", prompt_version: "reduce.anthropic.v1" },
+    reduction: { reducer: "capabilities", inputs: { subject: "subject", target: "target" }, capabilities: [{ id: "cap_a", requirement_ref: "req_a", statement: "A", evidence_refs: ["direct"], support: "adjacent", confidence: "medium", generated_by: { provider: "fixture", model: "structured-context-ledger", prompt_version: "capabilities.reduction.v1" } }] }
+  });
+  assert.equal(result.status, "invalid_reference");
+  assert.equal(result.provenance_violations?.length, 3);
+});
+
+test("runtime-owned generated_by passes when it matches the generation record", () => {
+  const result = validateCapabilityEvidencePolicy({
+    clusterId: "product_delivery",
+    allowedRequirementIds: ["req_a"],
+    permittedEvidenceIds: ["direct"],
+    unresolvedEvidenceIds: [],
+    partialEvidenceIds: [],
+    generationRecord: { provider: "anthropic", model: "claude-sonnet-5", prompt_version: "reduce.anthropic.v1" },
+    provenanceNormalizedByAdapter: true,
+    reduction: { reducer: "capabilities", inputs: { subject: "subject", target: "target" }, capabilities: [{ id: "cap_a", requirement_ref: "req_a", statement: "A", evidence_refs: ["direct"], support: "adjacent", confidence: "medium", generated_by: { provider: "anthropic", model: "claude-sonnet-5", prompt_version: "reduce.anthropic.v1" } }] }
+  });
+  assert.equal(result.status, "completed_valid_output");
+  assert.equal(result.provenance_normalized_by_adapter, true);
+});

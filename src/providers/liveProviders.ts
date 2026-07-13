@@ -111,6 +111,26 @@ function textFromAnthropicResponse(data: unknown): string {
   return JSON.stringify(data);
 }
 
+export function normalizeCapabilityReductionProvenance(value: CapabilityReduction, provider: string, model: string, promptVersion: string): CapabilityReduction {
+  return {
+    ...value,
+    capabilities: value.capabilities.map((capability) => ({
+      ...capability,
+      generated_by: {
+        provider,
+        model,
+        prompt_version: promptVersion
+      }
+    }))
+  };
+}
+
+export function classifyAnthropicCapabilityReductionFailure(raw: unknown, error: unknown): "provider_incomplete_max_tokens" | "invalid_structured_output" {
+  const stopReason = raw && typeof raw === "object" ? (raw as { stop_reason?: unknown }).stop_reason : null;
+  if (stopReason === "max_tokens" && error instanceof SyntaxError) return "provider_incomplete_max_tokens";
+  return "invalid_structured_output";
+}
+
 export function providerReadiness(mode: "mocked" | "fixture" | "live"): ProviderReadiness {
   const required = mode === "live" ? ["GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"] : [];
   const missing = required.filter((name) => !process.env[name]);
@@ -436,6 +456,9 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
       body: JSON.stringify({
         model: this.model,
         max_tokens: this.maxTokens,
+        thinking: {
+          type: "disabled"
+        },
         output_config: {
           format: {
             type: "json_schema",
@@ -468,9 +491,13 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
     if (!response.ok) throw new ProviderExecutionError("anthropic", `Anthropic reduction failed with HTTP ${response.status}.`, raw, { ...metadata, provider_status: "provider_error" });
     let output;
     try {
-      output = validateReductionReferences(validateReductionOutput(parseJsonObject(textFromAnthropicResponse(raw)), "anthropic"), input.contexts, "anthropic");
+      output = validateReductionReferences(normalizeCapabilityReductionProvenance(validateReductionOutput(parseJsonObject(textFromAnthropicResponse(raw)), "anthropic"), "anthropic", this.model, promptVersion), input.contexts, "anthropic");
     } catch (error) {
-      throw new ProviderExecutionError("anthropic", error instanceof Error ? error.message : "Anthropic returned invalid structured output.", raw, metadata);
+      const classification = classifyAnthropicCapabilityReductionFailure(raw, error);
+      throw new ProviderExecutionError("anthropic", error instanceof Error ? error.message : "Anthropic returned invalid structured output.", raw, {
+        ...metadata,
+        provider_completion_state: classification
+      });
     }
     return { output, raw_output: raw, provider: "anthropic", model: this.model, prompt_version: promptVersion, metrics, started_at: started.toISOString(), completed_at: completed.toISOString() };
   }

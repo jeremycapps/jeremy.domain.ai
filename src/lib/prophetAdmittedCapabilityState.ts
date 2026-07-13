@@ -3,7 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { parse, stringify } from "yaml";
 import type { CapabilityCandidate, CapabilityReduction, CapabilityValidation, Context, StageGenerationRecord } from "../types.js";
-import { AnthropicCapabilityReductionProvider, OpenAIValidationProvider, configuredModelIds } from "../providers/liveProviders.js";
+import { AnthropicCapabilityReductionProvider, OpenAIValidationProvider, configuredModelIds, normalizeCapabilityReductionProvenance } from "../providers/liveProviders.js";
 import { ProviderExecutionError } from "../providers/errors.js";
 import { validateReductionOutput, validateReductionReferences } from "../providers/validators.js";
 import { artifactRef, stageRecord, writeGenerationRecords, writeJsonArtifact } from "./corusArtifacts.js";
@@ -88,6 +88,8 @@ export interface DeterministicCapabilityValidationResult {
   invalid_evidence_refs: Array<{ capability_id: string; evidence_ref: string }>;
   unresolved_evidence_refs: Array<{ capability_id: string; evidence_ref: string }>;
   support_ceiling_violations: Array<{ capability_id: string; evidence_refs: string[]; support: string; rule: string }>;
+  provenance_violations?: Array<{ capability_id: string; field: string; expected: string; actual: string }>;
+  provenance_normalized_by_adapter?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -395,6 +397,8 @@ export function validateCapabilityEvidencePolicy(input: {
   permittedEvidenceIds: string[];
   unresolvedEvidenceIds: string[];
   partialEvidenceIds: string[];
+  generationRecord?: Pick<StageGenerationRecord, "provider" | "model" | "prompt_version">;
+  provenanceNormalizedByAdapter?: boolean;
 }): DeterministicCapabilityValidationResult {
   const allowedRequirements = new Set(input.allowedRequirementIds);
   const permittedEvidence = new Set(input.permittedEvidenceIds);
@@ -404,6 +408,7 @@ export function validateCapabilityEvidencePolicy(input: {
   const invalid_evidence_refs: DeterministicCapabilityValidationResult["invalid_evidence_refs"] = [];
   const unresolved_evidence_refs: DeterministicCapabilityValidationResult["unresolved_evidence_refs"] = [];
   const support_ceiling_violations: DeterministicCapabilityValidationResult["support_ceiling_violations"] = [];
+  const provenance_violations: NonNullable<DeterministicCapabilityValidationResult["provenance_violations"]> = [];
 
   for (const capability of input.reduction.capabilities) {
     if (!allowedRequirements.has(capability.requirement_ref)) invalid_requirement_refs.push({ capability_id: capability.id, requirement_ref: capability.requirement_ref });
@@ -417,13 +422,19 @@ export function validateCapabilityEvidencePolicy(input: {
         support_ceiling_violations.push({ capability_id: capability.id, evidence_refs: capability.evidence_refs, support: capability.support, rule: "partially_resolved evidence used alone cannot support above adjacent." });
       }
     }
+    if (input.generationRecord) {
+      const expected = input.generationRecord;
+      if (capability.generated_by.provider !== expected.provider) provenance_violations.push({ capability_id: capability.id, field: "provider", expected: expected.provider, actual: capability.generated_by.provider });
+      if (capability.generated_by.model !== expected.model) provenance_violations.push({ capability_id: capability.id, field: "model", expected: expected.model, actual: capability.generated_by.model });
+      if (capability.generated_by.prompt_version !== expected.prompt_version) provenance_violations.push({ capability_id: capability.id, field: "prompt_version", expected: expected.prompt_version, actual: capability.generated_by.prompt_version });
+    }
   }
-  const status = invalid_requirement_refs.length > 0 || invalid_evidence_refs.length > 0 || unresolved_evidence_refs.length > 0
+  const status = invalid_requirement_refs.length > 0 || invalid_evidence_refs.length > 0 || unresolved_evidence_refs.length > 0 || provenance_violations.length > 0
     ? "invalid_reference"
     : support_ceiling_violations.length > 0
       ? "support_ceiling_violation"
       : "completed_valid_output";
-  return { status, cluster_id: input.clusterId, capability_count: input.reduction.capabilities.length, invalid_requirement_refs, invalid_evidence_refs, unresolved_evidence_refs, support_ceiling_violations };
+  return { status, cluster_id: input.clusterId, capability_count: input.reduction.capabilities.length, invalid_requirement_refs, invalid_evidence_refs, unresolved_evidence_refs, support_ceiling_violations, provenance_violations, provenance_normalized_by_adapter: input.provenanceNormalizedByAdapter ?? false };
 }
 
 function admittedRequirementIds(clusters: AdmittedClusters): Set<string> {
@@ -656,9 +667,24 @@ export function filteredArtifactNames(clusterId: string) {
     target: `33-filtered_attempt_1-target-context-${clusterId}.yaml`,
     raw: `33-filtered_attempt_1-raw-output-${clusterId}.json`,
     normalized: `33-filtered_attempt_1-normalized-output-${clusterId}.yaml`,
+    provenanceCorrected: `33-filtered_attempt_1-provenance-corrected-normalized-output-${clusterId}.yaml`,
+    provenanceCorrectedValidation: `33-filtered_attempt_1-provenance-corrected-deterministic-validation-${clusterId}.yaml`,
     validation: `33-filtered_attempt_1-deterministic-validation-${clusterId}.yaml`,
     generationRecord: `33-filtered_attempt_1-generation-record-${clusterId}.json`,
     failure: `33-filtered_attempt_1-failure-${clusterId}.yaml`
+  };
+}
+
+function filteredAttemptArtifactNames(clusterId: string, providerAttempt: number) {
+  const base = filteredArtifactNames(clusterId);
+  if (providerAttempt === 1) return base;
+  return {
+    ...base,
+    raw: `33-filtered_attempt_1-raw-output-${clusterId}-attempt-${providerAttempt}.json`,
+    normalized: `33-filtered_attempt_1-normalized-output-${clusterId}-attempt-${providerAttempt}.yaml`,
+    validation: `33-filtered_attempt_1-deterministic-validation-${clusterId}-attempt-${providerAttempt}.yaml`,
+    generationRecord: `33-filtered_attempt_1-generation-record-${clusterId}-attempt-${providerAttempt}.json`,
+    failure: `33-filtered_attempt_1-failure-${clusterId}-attempt-${providerAttempt}.yaml`
   };
 }
 
@@ -671,11 +697,60 @@ export function completedFilteredAttemptClusterIdsFromRecords(records: StageGene
 
 async function readExistingValidFilteredCluster(runDir: string, clusterId: string, clusterTarget: Context, policy: EvidenceBoundaryAdmission): Promise<CapabilityReduction | null> {
   const names = filteredArtifactNames(clusterId);
+  const attempt2 = filteredAttemptArtifactNames(clusterId, 2);
+  const candidates = [
+    { normalized: names.provenanceCorrected, validation: names.provenanceCorrectedValidation },
+    { normalized: attempt2.normalized, validation: attempt2.validation },
+    { normalized: names.normalized, validation: names.validation }
+  ];
   try {
-    const reduction = await readYaml<CapabilityReduction>(path.join(runDir, names.normalized));
-    const deterministic = await readYaml<DeterministicCapabilityValidationResult>(path.join(runDir, names.validation));
-    validateReductionReferences(validateReductionOutput(reduction, "anthropic"), { subject: { id: "subject", kind: "subject", label: "subject", sources: [], content: { contexts: policy.permitted_evidence_context_ids.map((id) => ({ id })) }, generation: { operation: "contextualize", provider: "fixture", model: "fixture", prompt_version: "fixture", input_refs: [], schema_version: "corus.context.v1", created_at: new Date().toISOString() } }, target: clusterTarget }, "anthropic");
-    return deterministic.status === "completed_valid_output" ? reduction : null;
+    for (const candidate of candidates) {
+      try {
+        const reduction = await readYaml<CapabilityReduction>(path.join(runDir, candidate.normalized));
+        const deterministic = await readYaml<DeterministicCapabilityValidationResult>(path.join(runDir, candidate.validation));
+        validateReductionReferences(validateReductionOutput(reduction, "anthropic"), { subject: { id: "subject", kind: "subject", label: "subject", sources: [], content: { contexts: policy.permitted_evidence_context_ids.map((id) => ({ id })) }, generation: { operation: "contextualize", provider: "fixture", model: "fixture", prompt_version: "fixture", input_refs: [], schema_version: "corus.context.v1", created_at: new Date().toISOString() } }, target: clusterTarget }, "anthropic");
+        if (deterministic.status === "completed_valid_output") return reduction;
+      } catch {}
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function correctExistingSmokeProvenance(input: {
+  root: string;
+  runDir: string;
+  clusterId: string;
+  clusterTarget: Context;
+  admission: EvidenceBoundaryAdmission;
+}): Promise<{ reduction: CapabilityReduction; validation: DeterministicCapabilityValidationResult; artifact_refs: string[] } | null> {
+  const names = filteredArtifactNames(input.clusterId);
+  const normalizedPath = path.join(input.runDir, names.normalized);
+  const recordPath = path.join(input.runDir, names.generationRecord);
+  try {
+    const existing = await readYaml<CapabilityReduction>(normalizedPath);
+    const record = JSON.parse(await fs.readFile(recordPath, "utf8")) as StageGenerationRecord;
+    const corrected = normalizeCapabilityReductionProvenance(existing, record.provider, record.model, record.prompt_version);
+    validateReductionReferences(corrected, { subject: { id: "subject", kind: "subject", label: "subject", sources: [], content: { contexts: input.admission.permitted_evidence_context_ids.map((id) => ({ id })) }, generation: { operation: "contextualize", provider: "fixture", model: "fixture", prompt_version: "fixture", input_refs: [], schema_version: "corus.context.v1", created_at: new Date().toISOString() } }, target: input.clusterTarget }, "anthropic");
+    const validation = validateCapabilityEvidencePolicy({
+      clusterId: input.clusterId,
+      reduction: corrected,
+      allowedRequirementIds: contextIdsFromContext(input.clusterTarget),
+      permittedEvidenceIds: input.admission.permitted_evidence_context_ids,
+      unresolvedEvidenceIds: input.admission.unresolved_context_ids,
+      partialEvidenceIds: input.admission.support_ceilings.map((ceiling) => ceiling.context_ref),
+      generationRecord: record,
+      provenanceNormalizedByAdapter: true
+    });
+    if (validation.status !== "completed_valid_output") throw new Error(`Smoke provenance correction failed deterministic validation: ${validation.status}`);
+    await fs.writeFile(path.join(input.runDir, names.provenanceCorrected), stringify(corrected), "utf8");
+    await fs.writeFile(path.join(input.runDir, names.provenanceCorrectedValidation), stringify(validation), "utf8");
+    return {
+      reduction: corrected,
+      validation,
+      artifact_refs: [artifactRef(input.root, path.join(input.runDir, names.provenanceCorrected)), artifactRef(input.root, path.join(input.runDir, names.provenanceCorrectedValidation))]
+    };
   } catch {
     return null;
   }
@@ -727,19 +802,47 @@ export async function runFilteredCapabilityRegeneration(input: { root?: string; 
   let claudeCalls = 0;
 
   for (const cluster of orderedClusters) {
-    const names = filteredArtifactNames(cluster.id);
     const clusterTarget = filterContext(targetRaw.context, new Set(cluster.requirement_refs), `prophet_filtered_attempt_1_${cluster.id}_requirements`, `Prophet filtered attempt 1 ${cluster.label} requirements`);
+    let names = filteredArtifactNames(cluster.id);
     await fs.writeFile(path.join(runDir, names.target), stringify({ context: clusterTarget, cluster_ref: cluster.id, requirement_refs: cluster.requirement_refs }), "utf8");
+    if (cluster.id === smokeCluster.id) {
+      const correctedSmoke = await correctExistingSmokeProvenance({ root, runDir, clusterId: cluster.id, clusterTarget, admission });
+      if (correctedSmoke) {
+        aggregate.push({ cluster_id: cluster.id, requirement_refs: cluster.requirement_refs, reduction: correctedSmoke.reduction, validation: correctedSmoke.validation });
+        continue;
+      }
+    }
     const existing = await readExistingValidFilteredCluster(runDir, cluster.id, clusterTarget, admission);
     if (existing) {
       const validation = await readYaml<DeterministicCapabilityValidationResult>(path.join(runDir, names.validation));
       aggregate.push({ cluster_id: cluster.id, requirement_refs: cluster.requirement_refs, reduction: existing, validation });
       continue;
     }
+    const priorFailureRawPath = path.join(runDir, names.raw.replace(".json", "-error-attempt-1.json"));
+    let providerAttemptStart = 1;
+    try {
+      const priorRaw = JSON.parse(await fs.readFile(priorFailureRawPath, "utf8")) as { stop_reason?: string };
+      if (priorRaw.stop_reason === "max_tokens") providerAttemptStart = 2;
+    } catch {}
+    names = filteredAttemptArtifactNames(cluster.id, providerAttemptStart);
     let reductionResult;
-    let attempt = 0;
+    let attempt = providerAttemptStart - 1;
     while (true) {
       attempt += 1;
+      names = filteredAttemptArtifactNames(cluster.id, attempt);
+      await fs.writeFile(path.join(runDir, `33-filtered_attempt_1-request-config-${cluster.id}-attempt-${attempt}.yaml`), stringify({
+        schema_version: "corus.filtered_capability_reduction_request_config.v1",
+        attempt: "filtered_attempt_1",
+        cluster_id: cluster.id,
+        provider_attempt: attempt,
+        provider: "anthropic",
+        model: configuredModelIds().anthropic,
+        prompt_version: "reduce.anthropic.v1",
+        max_tokens: 4000,
+        thinking: { type: "disabled" },
+        output_config: { format: { type: "json_schema", schema_ref: "corus.capability_reduction.v1" } },
+        evidence_boundary_ref: artifactRef(root, path.join(runDir, "31-author-evidence-boundary-admission.yaml"))
+      }), "utf8");
       try {
         claudeCalls += 1;
         reductionResult = await reducer.execute({
@@ -756,7 +859,8 @@ export async function runFilteredCapabilityRegeneration(input: { root?: string; 
         });
         break;
       } catch (error) {
-        const failure = { schema_version: "corus.filtered_cluster_failure.v1", attempt: "filtered_attempt_1", cluster_id: cluster.id, provider: error instanceof ProviderExecutionError ? error.provider : undefined, message: error instanceof Error ? error.message : String(error), retryable: isTransientProviderError(error), retry_attempt: attempt };
+        const incompleteMaxTokens = error instanceof ProviderExecutionError && error.metadata?.provider_completion_state === "provider_incomplete_max_tokens";
+        const failure = { schema_version: "corus.filtered_cluster_failure.v1", attempt: "filtered_attempt_1", cluster_id: cluster.id, provider_attempt: attempt, provider: error instanceof ProviderExecutionError ? error.provider : undefined, message: error instanceof Error ? error.message : String(error), classification: incompleteMaxTokens ? "provider_incomplete_max_tokens" : error instanceof ProviderExecutionError ? error.metadata?.provider_completion_state ?? "provider_output_invalid" : "local_failure", retryable: attempt === 1 && (isTransientProviderError(error) || incompleteMaxTokens), retry_attempt: attempt };
         const rawFailurePath = path.join(runDir, names.raw.replace(".json", `-error-attempt-${attempt}.json`));
         if (error instanceof ProviderExecutionError && error.raw_output !== undefined) await writeJsonArtifact(runDir, path.basename(rawFailurePath), error.raw_output);
         await fs.writeFile(path.join(runDir, names.failure), stringify(failure), "utf8");
@@ -781,17 +885,18 @@ export async function runFilteredCapabilityRegeneration(input: { root?: string; 
           records.push(failureRecord);
           await writeGenerationRecords(runDir, records);
         }
-        if (attempt === 1 && isTransientProviderError(error)) continue;
+        if (attempt === 1 && (isTransientProviderError(error) || incompleteMaxTokens)) continue;
         await fs.writeFile(path.join(runDir, "34-filtered_attempt_1-summary.yaml"), stringify({ schema_version: "corus.filtered_capability_regeneration_summary.v1", pipeline_status: "filtered_capability_regeneration_failed", failed_cluster_id: cluster.id, smoke_cluster_passed: cluster.id !== smokeCluster.id, claude_cluster_calls: claudeCalls, failure }), "utf8");
         throw error;
       }
     }
     await writeJsonArtifact(runDir, names.raw, reductionResult.raw_output ?? {});
     const reduction = validateReductionReferences(reductionResult.output, { subject: providerApplicantContext, target: clusterTarget }, "anthropic");
-    const validation = validateCapabilityEvidencePolicy({ clusterId: cluster.id, reduction, allowedRequirementIds: cluster.requirement_refs, permittedEvidenceIds: admission.permitted_evidence_context_ids, unresolvedEvidenceIds: admission.unresolved_context_ids, partialEvidenceIds: admission.support_ceilings.map((ceiling) => ceiling.context_ref) });
+    const record = stageRecord({ type: "capability_reduction", input_refs: [artifactRef(root, path.join(runDir, "33-filtered_attempt_1-subject-context.yaml")), artifactRef(root, path.join(runDir, names.target))], output_ref: artifactRef(root, path.join(runDir, names.normalized)), raw_output_ref: artifactRef(root, path.join(runDir, names.raw)), provider: reductionResult.provider, model: reductionResult.model, prompt_version: reductionResult.prompt_version, schema_version: "corus.capability_reduction.v1", validation_status: "pending_deterministic_validation", metrics: reductionResult.metrics });
+    const validation = validateCapabilityEvidencePolicy({ clusterId: cluster.id, reduction, allowedRequirementIds: cluster.requirement_refs, permittedEvidenceIds: admission.permitted_evidence_context_ids, unresolvedEvidenceIds: admission.unresolved_context_ids, partialEvidenceIds: admission.support_ceilings.map((ceiling) => ceiling.context_ref), generationRecord: record, provenanceNormalizedByAdapter: true });
+    record.validation_status = validation.status;
     await fs.writeFile(path.join(runDir, names.normalized), stringify(reduction), "utf8");
     await fs.writeFile(path.join(runDir, names.validation), stringify(validation), "utf8");
-    const record = stageRecord({ type: "capability_reduction", input_refs: [artifactRef(root, path.join(runDir, "33-filtered_attempt_1-subject-context.yaml")), artifactRef(root, path.join(runDir, names.target))], output_ref: artifactRef(root, path.join(runDir, names.normalized)), raw_output_ref: artifactRef(root, path.join(runDir, names.raw)), provider: reductionResult.provider, model: reductionResult.model, prompt_version: reductionResult.prompt_version, schema_version: "corus.capability_reduction.v1", validation_status: validation.status, metrics: reductionResult.metrics });
     await writeJsonArtifact(runDir, names.generationRecord, record);
     records.push(record);
     await writeGenerationRecords(runDir, records);
@@ -821,9 +926,30 @@ export async function runFilteredCapabilityRegeneration(input: { root?: string; 
       }
     });
   } catch (error) {
+    const openAiRawPath = path.join(runDir, "raw-35-filtered_attempt_1-openai-validation-error.json");
+    const openAiFailurePath = path.join(runDir, "35-filtered_attempt_1-openai-validation-failure.yaml");
     if (error instanceof ProviderExecutionError && error.raw_output !== undefined) await writeJsonArtifact(runDir, "raw-35-filtered_attempt_1-openai-validation-error.json", error.raw_output);
-    const failure = { schema_version: "corus.filtered_openai_validation_failure.v1", pipeline_status: "openai_validation_failed", message: error instanceof Error ? error.message : String(error), provider: error instanceof ProviderExecutionError ? error.provider : undefined };
-    await fs.writeFile(path.join(runDir, "35-filtered_attempt_1-openai-validation-failure.yaml"), stringify(failure), "utf8");
+    const failure = { schema_version: "corus.filtered_openai_validation_failure.v1", pipeline_status: "openai_validation_failed", message: error instanceof Error ? error.message : String(error), provider: error instanceof ProviderExecutionError ? error.provider : undefined, classification: error instanceof ProviderExecutionError && JSON.stringify(error.raw_output ?? {}).includes("rate_limit") ? "model_rate_limit" : "unknown_provider_failure" };
+    if (error instanceof ProviderExecutionError && error.raw_output !== undefined) {
+      const failureRecord = stageRecord({
+        type: "capability_validation",
+        input_refs: [artifactRef(root, path.join(runDir, "34-filtered_attempt_1-capability-candidates.yaml"))],
+        output_ref: artifactRef(root, openAiFailurePath),
+        raw_output_ref: artifactRef(root, openAiRawPath),
+        provider: "openai",
+        model: configuredModelIds().openai,
+        prompt_version: "validate.openai.v1",
+        schema_version: "corus.validation.v1",
+        validation_status: failure.classification,
+        provider_completion_state: "provider_error",
+        metrics: { input_tokens: null, output_tokens: null, total_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" },
+        stop_reason: null
+      });
+      await writeJsonArtifact(runDir, "35-filtered_attempt_1-openai-validation-generation-record.json", failureRecord);
+      records.push(failureRecord);
+      await writeGenerationRecords(runDir, records);
+    }
+    await fs.writeFile(openAiFailurePath, stringify(failure), "utf8");
     await fs.writeFile(path.join(runDir, "34-filtered_attempt_1-summary.yaml"), stringify({ schema_version: "corus.filtered_capability_regeneration_summary.v1", pipeline_status: "openai_validation_failed", claude_cluster_calls: claudeCalls, openai_reached: true, failure }), "utf8");
     throw error;
   }

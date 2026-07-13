@@ -25,7 +25,7 @@ import { resumeFailureReroutingFromCheckpoint } from "../src/lib/corusCheckpoint
 import { runAttempt2AlignmentReplay } from "../src/lib/corusAlignmentReplay.js";
 import { validateProjectionNoInvention } from "../src/lib/corusProjection.js";
 import { classifyProviderFailure } from "../src/lib/providerFailureClassification.js";
-import { AnthropicCapabilityReductionProvider, capabilityReductionJsonSchema, providerReadiness } from "../src/providers/liveProviders.js";
+import { AnthropicCapabilityReductionProvider, capabilityReductionJsonSchema, classifyAnthropicCapabilityReductionFailure, providerReadiness } from "../src/providers/liveProviders.js";
 import { metricsFromUsage, parseJsonObject, textFromOpenAIResponse } from "../src/providers/providerUtils.js";
 import {
   MockCapabilityReductionProvider,
@@ -733,6 +733,8 @@ test("Anthropic reduction request includes the CapabilityReduction structured-ou
     const capabilities = schema.properties.capabilities as { items: { required: string[]; properties: Record<string, unknown> } };
     assert.equal(format.type, "json_schema");
     assert.deepEqual(schema, capabilityReductionJsonSchema());
+    assert.deepEqual(requestBody?.thinking, { type: "disabled" });
+    assert.equal(requestBody?.max_tokens, 4000);
     assert.equal((schema.properties.reducer as { const?: unknown }).const, "capabilities");
     assert.ok(capabilities.items.required.includes("requirement_ref"));
     assert.ok(capabilities.items.required.includes("evidence_refs"));
@@ -741,6 +743,14 @@ test("Anthropic reduction request includes the CapabilityReduction structured-ou
     else process.env.ANTHROPIC_API_KEY = previousKey;
     globalThis.fetch = previousFetch;
   }
+});
+
+test("Anthropic max-token truncation is classified as provider incomplete", () => {
+  assert.equal(
+    classifyAnthropicCapabilityReductionFailure({ stop_reason: "max_tokens", content: [{ type: "text", text: "{\"reducer\":" }] }, new SyntaxError("Unexpected end of JSON input")),
+    "provider_incomplete_max_tokens"
+  );
+  assert.equal(classifyAnthropicCapabilityReductionFailure({ stop_reason: "end_turn" }, new SyntaxError("Unexpected token")), "invalid_structured_output");
 });
 
 test("CapabilityReduction schema requires requirement_ref and evidence_refs", () => {
