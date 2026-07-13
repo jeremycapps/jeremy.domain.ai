@@ -20,7 +20,9 @@
     "inventory:prophet:applicant-evidence": "tsx scripts/runApplicantEvidenceInventory.ts",
     "resolve:prophet:direct-evidence": "tsx scripts/runDirectEvidenceResolution.ts",
     "continue:prophet:capability-state": "tsx scripts/runProphetAdmittedCapabilityState.ts",
-    "audit:prophet:evidence-boundary": "tsx scripts/runEvidenceBoundaryAudit.ts"
+    "audit:prophet:evidence-boundary": "tsx scripts/runEvidenceBoundaryAudit.ts",
+    "admit:prophet:evidence-boundary": "tsx scripts/admitProphetEvidenceBoundary.ts",
+    "live:prophet:filtered-capability-regeneration": "tsx scripts/runFilteredProphetCapabilityRegeneration.ts"
   },
   "dependencies": {
     "yaml": "^2.5.1"

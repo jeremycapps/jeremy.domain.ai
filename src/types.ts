@@ -393,6 +393,7 @@ export interface ReduceCapabilitiesInput {
     subject: Context;
     target: Context;
   };
+  evidence_policy?: unknown;
   revision_findings?: ValidationFinding[];
   failure_analysis?: FailureAnalysis;
   prior_raw_output?: unknown;
@@ -408,6 +409,7 @@ export interface ValidateCapabilitiesInput {
     subject: Context;
     target: Context;
   };
+  evidence_policy?: unknown;
 }
 
 export interface HandoffFailure {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { admittedDerivationClustersForReview, clusterCapabilityProvenance, completedClusterIdsFromRecords, excludedClustersForReview, geminiSourcingCandidates, routeApplicantRecord } from "../src/lib/prophetAdmittedCapabilityState.js";
+import { admittedDerivationClustersForReview, clusterCapabilityProvenance, completedClusterIdsFromRecords, completedFilteredAttemptClusterIdsFromRecords, excludedClustersForReview, geminiSourcingCandidates, routeApplicantRecord, validateCapabilityEvidencePolicy } from "../src/lib/prophetAdmittedCapabilityState.js";
 
 test("record-level routing keeps directly sourced records on direct retrieval", () => {
   assert.equal(routeApplicantRecord({ evidence_status: "directly_resolved", resolved_source_refs: ["Resume"], unresolved_source_refs: [] }), "direct_retrieval");
@@ -71,4 +71,62 @@ test("provider attempts use distinct cluster artifact names", () => {
     { type: "capability_reduction", validation_status: "completed_valid_output", raw_output_ref: "outputs/run/raw-24-capability-candidates-provider-two.json" }
   ] as any;
   assert.equal(new Set(records.map((record: any) => record.raw_output_ref)).size, 2);
+});
+
+test("partially resolved evidence used alone cannot produce supported", () => {
+  const result = validateCapabilityEvidencePolicy({
+    clusterId: "product_delivery",
+    allowedRequirementIds: ["req_a"],
+    permittedEvidenceIds: ["partial"],
+    unresolvedEvidenceIds: [],
+    partialEvidenceIds: ["partial"],
+    reduction: { reducer: "capabilities", inputs: { subject: "subject", target: "target" }, capabilities: [{ id: "cap_a", requirement_ref: "req_a", statement: "A", evidence_refs: ["partial"], support: "supported", confidence: "high", generated_by: { provider: "anthropic", model: "mock", prompt_version: "test" } }] }
+  });
+  assert.equal(result.status, "support_ceiling_violation");
+});
+
+test("partially resolved evidence may produce adjacent", () => {
+  const result = validateCapabilityEvidencePolicy({
+    clusterId: "product_delivery",
+    allowedRequirementIds: ["req_a"],
+    permittedEvidenceIds: ["partial"],
+    unresolvedEvidenceIds: [],
+    partialEvidenceIds: ["partial"],
+    reduction: { reducer: "capabilities", inputs: { subject: "subject", target: "target" }, capabilities: [{ id: "cap_a", requirement_ref: "req_a", statement: "A", evidence_refs: ["partial"], support: "adjacent", confidence: "medium", generated_by: { provider: "anthropic", model: "mock", prompt_version: "test" } }] }
+  });
+  assert.equal(result.status, "completed_valid_output");
+});
+
+test("combining partial with direct evidence does not automatically reject supported", () => {
+  const result = validateCapabilityEvidencePolicy({
+    clusterId: "product_delivery",
+    allowedRequirementIds: ["req_a"],
+    permittedEvidenceIds: ["partial", "direct"],
+    unresolvedEvidenceIds: [],
+    partialEvidenceIds: ["partial"],
+    reduction: { reducer: "capabilities", inputs: { subject: "subject", target: "target" }, capabilities: [{ id: "cap_a", requirement_ref: "req_a", statement: "A", evidence_refs: ["partial", "direct"], support: "supported", confidence: "high", generated_by: { provider: "anthropic", model: "mock", prompt_version: "test" } }] }
+  });
+  assert.equal(result.status, "completed_valid_output");
+});
+
+test("unresolved contexts cannot appear in provider evidence references", () => {
+  const result = validateCapabilityEvidencePolicy({
+    clusterId: "product_delivery",
+    allowedRequirementIds: ["req_a"],
+    permittedEvidenceIds: ["direct"],
+    unresolvedEvidenceIds: ["unresolved"],
+    partialEvidenceIds: [],
+    reduction: { reducer: "capabilities", inputs: { subject: "subject", target: "target" }, capabilities: [{ id: "cap_a", requirement_ref: "req_a", statement: "A", evidence_refs: ["unresolved"], support: "adjacent", confidence: "medium", generated_by: { provider: "anthropic", model: "mock", prompt_version: "test" } }] }
+  });
+  assert.equal(result.status, "invalid_reference");
+  assert.deepEqual(result.unresolved_evidence_refs, [{ capability_id: "cap_a", evidence_ref: "unresolved" }]);
+});
+
+test("pre-filter artifacts are never resumed as valid filtered outputs", () => {
+  const records = [
+    { type: "capability_reduction", validation_status: "completed_valid_output", output_ref: "outputs/run/24-capability-candidates-product_delivery_and_execution.yaml" },
+    { type: "capability_reduction", validation_status: "completed_valid_output", output_ref: "outputs/run/33-filtered_attempt_1-normalized-output-technical_product_fluency.yaml" }
+  ] as any;
+  assert.deepEqual(completedClusterIdsFromRecords(records), ["product_delivery_and_execution"]);
+  assert.deepEqual(completedFilteredAttemptClusterIdsFromRecords(records), ["technical_product_fluency"]);
 });

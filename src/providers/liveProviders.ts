@@ -398,7 +398,8 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
   private readonly maxTokens = Number(process.env.ANTHROPIC_CAPABILITY_REDUCTION_MAX_TOKENS ?? "4000");
 
   async execute(input: ReduceCapabilitiesInput): Promise<ProviderResult<CapabilityReduction>> {
-    const startedAt = Date.now();
+    const started = new Date();
+    const startedAt = started.getTime();
     const apiKey = requireKey("ANTHROPIC_API_KEY", "anthropic");
     const isRecovery = Boolean(input.failure_analysis);
     const promptVersion = isRecovery ? "reduce.anthropic.recovery.v1" : "reduce.anthropic.v1";
@@ -451,14 +452,27 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
     });
 
     const raw = await response.json();
-    if (!response.ok) throw new ProviderExecutionError("anthropic", `Anthropic reduction failed with HTTP ${response.status}.`, raw);
+    const completed = new Date();
+    const metrics = metricsFromUsage(startedAt, usageFromAnthropicResponse(raw));
+    const stopReason = raw && typeof raw === "object" && typeof (raw as { stop_reason?: unknown }).stop_reason === "string" ? (raw as { stop_reason: string }).stop_reason : null;
+    const metadata = {
+      model: this.model,
+      prompt_version: promptVersion,
+      schema_version: "corus.capability_reduction.v1",
+      metrics,
+      stop_reason: stopReason,
+      provider_completion_state: stopReason ?? (response.ok ? "completed" : "provider_error"),
+      started_at: started.toISOString(),
+      completed_at: completed.toISOString()
+    };
+    if (!response.ok) throw new ProviderExecutionError("anthropic", `Anthropic reduction failed with HTTP ${response.status}.`, raw, { ...metadata, provider_status: "provider_error" });
     let output;
     try {
       output = validateReductionReferences(validateReductionOutput(parseJsonObject(textFromAnthropicResponse(raw)), "anthropic"), input.contexts, "anthropic");
     } catch (error) {
-      throw new ProviderExecutionError("anthropic", error instanceof Error ? error.message : "Anthropic returned invalid structured output.", raw);
+      throw new ProviderExecutionError("anthropic", error instanceof Error ? error.message : "Anthropic returned invalid structured output.", raw, metadata);
     }
-    return { output, raw_output: raw, provider: "anthropic", model: this.model, prompt_version: promptVersion, metrics: metricsFromUsage(startedAt, usageFromAnthropicResponse(raw)) };
+    return { output, raw_output: raw, provider: "anthropic", model: this.model, prompt_version: promptVersion, metrics, started_at: started.toISOString(), completed_at: completed.toISOString() };
   }
 }
 
