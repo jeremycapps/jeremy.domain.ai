@@ -22,7 +22,8 @@
     "continue:prophet:capability-state": "tsx scripts/runProphetAdmittedCapabilityState.ts",
     "audit:prophet:evidence-boundary": "tsx scripts/runEvidenceBoundaryAudit.ts",
     "admit:prophet:evidence-boundary": "tsx scripts/admitProphetEvidenceBoundary.ts",
-    "live:prophet:filtered-capability-regeneration": "tsx scripts/runFilteredProphetCapabilityRegeneration.ts"
+    "live:prophet:filtered-capability-regeneration": "tsx scripts/runFilteredProphetCapabilityRegeneration.ts",
+    "live:prophet:cluster-scoped-validation": "tsx scripts/runOpenAIClusterScopedValidation.ts"
   },
   "dependencies": {
     "yaml": "^2.5.1"
