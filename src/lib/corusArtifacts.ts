@@ -31,6 +31,8 @@ export async function writeJsonArtifact(outputDir: string, filename: string, val
 
 export function stageRecord(input: {
   type: StageGenerationRecord["type"];
+  started_at?: string;
+  completed_at?: string;
   input_refs: string[];
   output_ref: string;
   raw_output_ref?: string;
@@ -39,7 +41,9 @@ export function stageRecord(input: {
   prompt_version: string;
   schema_version: string;
   validation_status: string;
+  provider_completion_state?: string | null;
   metrics: ProviderMetrics;
+  stop_reason?: string | null;
 }): StageGenerationRecord {
   return {
     id: randomUUID(),

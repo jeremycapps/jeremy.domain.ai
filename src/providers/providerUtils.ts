@@ -30,10 +30,17 @@ export function metricsFromUsage(startedAt: number, usage: unknown): ProviderMet
         : typeof record.candidatesTokenCount === "number"
           ? record.candidatesTokenCount
           : null;
+  const total =
+    typeof record.total_tokens === "number"
+      ? record.total_tokens
+      : typeof record.totalTokenCount === "number"
+        ? record.totalTokenCount
+        : null;
   return {
     ...base,
     input_tokens: input,
-    output_tokens: output
+    output_tokens: output,
+    total_tokens: total
   };
 }
 

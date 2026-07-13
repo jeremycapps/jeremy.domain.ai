@@ -7,6 +7,9 @@ import type {
   ContextualizeInput,
   FailureAnalysis,
   FailureAnalysisInput,
+  JobRequirementClusteringInput,
+  JobRequirementClusterRepairInput,
+  JobRequirementClusters,
   ProviderResult,
   ReduceCapabilitiesInput,
   ValidateCapabilitiesInput,
@@ -219,6 +222,98 @@ export class MockFailureAnalysisProvider implements AgentProvider<FailureAnalysi
       confidence: "high"
     };
     return providerResult(output, "openai", "mock-openai-failure-analyzer", "failure-analysis.mock.v1", startedAt);
+  }
+}
+
+function requirementIdsFromJobDescription(input: JobRequirementClusteringInput): string[] {
+  const contexts = input.job_description.content.contexts;
+  if (!Array.isArray(contexts)) return [];
+  return contexts
+    .map((entry) => (entry && typeof entry === "object" ? (entry as { id?: unknown }).id : undefined))
+    .filter((id): id is string => typeof id === "string");
+}
+
+export class MockJobRequirementClusteringProvider implements AgentProvider<JobRequirementClusteringInput, JobRequirementClusters> {
+  public calls: JobRequirementClusteringInput[] = [];
+
+  constructor(private readonly mode: "valid" | "provider_incomplete" | "schema_invalid" = "valid", private readonly forcedOutput?: unknown) {}
+
+  async execute(input: JobRequirementClusteringInput): Promise<ProviderResult<JobRequirementClusters>> {
+    const startedAt = Date.now();
+    this.calls.push(input);
+    if (this.mode === "provider_incomplete") {
+      throw new ProviderExecutionError("gemini", "Gemini clustering stopped before emitting a final cluster payload.", {}, { stop_reason: "max_tokens" });
+    }
+    if (this.forcedOutput) {
+      return providerResult(this.forcedOutput as JobRequirementClusters, "gemini", "mock-gemini-clusterer", "cluster-job-requirements.gemini.v1", startedAt);
+    }
+
+    const ids = requirementIdsFromJobDescription(input);
+    const labels = [
+      "Mock cluster 1",
+      "Mock cluster 2",
+      "Mock cluster 3",
+      "Mock cluster 4",
+      "Mock cluster 5",
+      "Mock cluster 6",
+      "Mock cluster 7"
+    ];
+    const clusters = labels.map((label, index) => {
+      const start = index * 5;
+      const requirementRefs = ids.slice(start, index === labels.length - 1 ? ids.length : start + 5);
+      return {
+        id: `cluster.mock_${index + 1}`,
+        label,
+        requirement_refs: requirementRefs,
+        rationale: "Deterministic mock group used to test clustering pipeline mechanics."
+      };
+    });
+
+    return providerResult(
+      {
+        schema_version: "corus.job_requirement_clusters.v1",
+        job_description_ref: input.job_description_ref,
+        clustering_policy_ref: input.policy.id,
+        clusters,
+        unassigned_requirement_refs: [],
+        overlapping_requirements: [],
+        generated_by: {
+          role: "implementer",
+          provider: "gemini",
+          model: "mock-gemini-clusterer",
+          prompt_version: "cluster-job-requirements.gemini.v1"
+        }
+      },
+      "gemini",
+      "mock-gemini-clusterer",
+      "cluster-job-requirements.gemini.v1",
+      startedAt
+    );
+  }
+}
+
+
+export class MockJobRequirementClusterRepairProvider implements AgentProvider<JobRequirementClusterRepairInput, JobRequirementClusters> {
+  public calls: JobRequirementClusterRepairInput[] = [];
+
+  constructor(private readonly mode: "valid" | "missing_one" = "valid") {}
+
+  async execute(input: JobRequirementClusterRepairInput): Promise<ProviderResult<JobRequirementClusters>> {
+    const startedAt = Date.now();
+    this.calls.push(input);
+    const repaired: JobRequirementClusters = JSON.parse(JSON.stringify(input.previous_proposal));
+    repaired.generated_by = {
+      role: "implementer",
+      provider: "google",
+      model: "mock-gemini-repairer",
+      prompt_version: "cluster-job-requirements.gemini.repair.v1"
+    };
+    const targetCluster = repaired.clusters.find((cluster) => cluster.id === "technical_product_fluency") ?? repaired.clusters[0];
+    const refs = this.mode === "missing_one" ? input.missing_requirement_refs.slice(0, 2) : input.missing_requirement_refs;
+    for (const ref of refs) {
+      if (!targetCluster.requirement_refs.includes(ref)) targetCluster.requirement_refs.push(ref);
+    }
+    return providerResult(repaired, "google", "mock-gemini-repairer", "cluster-job-requirements.gemini.repair.v1", startedAt);
   }
 }
 

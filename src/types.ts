@@ -202,8 +202,20 @@ export interface CapabilityProjection {
 
 export interface StageGenerationRecord {
   id: string;
-  type: "contextualization" | "capability_reduction" | "failure_analysis" | "capability_validation" | "projection";
+  type:
+    | "contextualization"
+    | "job_requirement_clustering"
+    | "job_requirement_cluster_repair"
+    | "cluster_integrity_validation"
+    | "repaired_cluster_integrity_validation"
+    | "cluster_admission"
+    | "capability_reduction"
+    | "failure_analysis"
+    | "capability_validation"
+    | "projection";
   created_at: string;
+  started_at?: string;
+  completed_at?: string;
   input_refs: string[];
   output_ref: string;
   raw_output_ref?: string;
@@ -212,18 +224,22 @@ export interface StageGenerationRecord {
   prompt_version: string;
   schema_version: string;
   validation_status: string;
+  provider_completion_state?: string | null;
   metrics: {
     input_tokens: number | null;
     output_tokens: number | null;
+    total_tokens?: number | null;
     estimated_cost_usd: number | null;
     latency_ms: number | null;
     measurement_source: "measured" | "derived" | "unavailable";
   };
+  stop_reason?: string | null;
 }
 
 export interface ProviderMetrics {
   input_tokens: number | null;
   output_tokens: number | null;
+  total_tokens?: number | null;
   estimated_cost_usd: number | null;
   latency_ms: number | null;
   measurement_source: "measured" | "derived" | "unavailable";
@@ -236,6 +252,8 @@ export interface ProviderResult<TOutput> {
   model: string;
   prompt_version: string;
   metrics: ProviderMetrics;
+  started_at?: string;
+  completed_at?: string;
 }
 
 export interface AgentProvider<TInput, TOutput> {
@@ -247,6 +265,127 @@ export interface ContextualizeInput {
   kind: string;
   position: ContextPosition;
   input_ref: string;
+}
+
+export interface JobRequirementClusteringPolicy {
+  id: "corus.job_requirement_clustering_policy.v1";
+  purpose: string;
+  rules: string[];
+}
+
+export interface JobRequirementCluster {
+  id: string;
+  label: string;
+  requirement_refs: string[];
+  rationale: string;
+  ambiguity?: string;
+}
+
+export interface JobRequirementOverlap {
+  requirement_ref: string;
+  cluster_refs: string[];
+  rationale: string;
+}
+
+export interface JobRequirementClusters {
+  schema_version: "corus.job_requirement_clusters.v1";
+  job_description_ref: string;
+  clustering_policy_ref: "corus.job_requirement_clustering_policy.v1";
+  clusters: JobRequirementCluster[];
+  unassigned_requirement_refs: string[];
+  overlapping_requirements: JobRequirementOverlap[];
+  generated_by: {
+    role: "implementer";
+    provider: string;
+    model: string;
+    prompt_version: "cluster-job-requirements.gemini.v1" | string;
+  };
+}
+
+export interface JobRequirementClusteringInput {
+  job_description: Context;
+  job_description_ref: string;
+  policy: JobRequirementClusteringPolicy;
+  schema: Record<string, unknown>;
+}
+
+export interface JobRequirementClusterRepairInput {
+  job_description: Context;
+  job_description_ref: string;
+  policy: JobRequirementClusteringPolicy;
+  schema: Record<string, unknown>;
+  previous_proposal: JobRequirementClusters;
+  previous_proposal_ref: string;
+  integrity_result: ClusterIntegrityResult;
+  integrity_result_ref: string;
+  missing_requirement_refs: string[];
+}
+
+export type ClusterIntegrityStatus = "valid" | "structurally_invalid" | "author_review_required";
+
+export interface ClusterIntegrityResult {
+  schema_version: "corus.job_requirement_cluster_integrity.v1";
+  status: ClusterIntegrityStatus;
+  checks: {
+    original_requirement_count: number;
+    accounted_requirement_count: number;
+    all_original_requirements_accounted_for: boolean;
+    unknown_requirement_refs: string[];
+    missing_requirement_refs: string[];
+    duplicate_cluster_ids: string[];
+    duplicate_refs_within_clusters: Array<{ cluster_ref: string; requirement_ref: string }>;
+    invalid_unassigned_refs: string[];
+    unreported_overlaps: string[];
+    invalid_overlap_refs: string[];
+    original_ids_unchanged: boolean;
+    original_text_unchanged: boolean;
+    original_ledger_unchanged: boolean;
+    applicant_context_absent: boolean;
+  };
+  review_conditions: {
+    unassigned_requirement_refs: string[];
+    overlapping_requirement_refs: string[];
+    singleton_cluster_refs: string[];
+    unusually_large_cluster_refs: string[];
+    ambiguous_cluster_refs: string[];
+  };
+}
+
+export interface JobRequirementClusteringRunResponse {
+  run_id: string;
+  run_status: "completed" | "failed";
+  pipeline_status: "awaiting_author" | "provider_incomplete" | "schema_invalid" | "structurally_invalid" | "provider_error";
+  objective_status: "not_evaluated";
+  stage_status: {
+    structured_context_preservation?: "completed_valid_output";
+    structured_job_description_preservation: "completed_valid_output";
+    job_requirement_clustering?: "completed_valid_output" | "provider_incomplete" | "schema_invalid" | "provider_error";
+    live_job_requirement_clustering?: "completed_valid_output" | "provider_incomplete" | "schema_invalid" | "provider_error";
+    cluster_integrity_validation?: "completed_valid_output" | "structurally_invalid";
+    cluster_admission?: "awaiting_author";
+    applicant_evidence_retrieval?: "not_reached";
+    shared_capability_claim_generation?: "not_reached";
+    shared_capability_validation?: "not_reached";
+    capability_admission?: "not_reached";
+    projection?: "not_reached";
+    original_live_job_requirement_clustering?: "structurally_invalid";
+    cluster_completeness_repair?: "completed_valid_output" | "provider_incomplete" | "schema_invalid" | "provider_error";
+    repaired_cluster_integrity_validation?: "completed_valid_output" | "structurally_invalid";
+  };
+  contexts: {
+    subject?: Context;
+    target: Context;
+  };
+  clusters: JobRequirementClusters | null;
+  integrity: ClusterIntegrityResult | null;
+  generation_records: StageGenerationRecord[];
+  artifact_dir: string;
+  review_artifact_ref?: string;
+  error?: {
+    message: string;
+    provider?: string;
+    stage?: string;
+  };
 }
 
 export interface ReduceCapabilitiesInput {

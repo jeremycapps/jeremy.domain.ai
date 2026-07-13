@@ -13,7 +13,10 @@
     "live:prophet:attempt2": "tsx scripts/runLiveProphetAttempt2.ts",
     "checkpoint:attempt2:validation": "tsx scripts/reprocessAttempt2Validation.ts",
     "checkpoint:attempt2:architect": "tsx scripts/resolveAttempt2ArchitectCheckpoint.ts",
-    "diagnostic:attempt2:alignment": "tsx scripts/runAttempt2AlignmentReplay.ts"
+    "diagnostic:attempt2:alignment": "tsx scripts/runAttempt2AlignmentReplay.ts",
+    "mock:prophet:clustering": "tsx scripts/runMockProphetClustering.ts",
+    "live:gemini:prophet:clustering": "tsx scripts/runLiveGeminiJobRequirementClustering.ts",
+    "live:gemini:prophet:cluster-repair": "tsx scripts/runLiveGeminiJobRequirementClusterRepair.ts"
   },
   "dependencies": {
     "yaml": "^2.5.1"

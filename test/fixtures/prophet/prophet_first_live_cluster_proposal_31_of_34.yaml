@@ -1,0 +1,98 @@
+schema_version: corus.job_requirement_clusters.v1
+job_description_ref: test/fixtures/prophet/prophet_senior_product_manager.yaml
+clustering_policy_ref: corus.job_requirement_clustering_policy.v1
+clusters:
+  - id: product_delivery_and_execution
+    label: Product Delivery and Execution
+    requirement_refs:
+      - prophet_maia_product_execution
+      - prophet_backlog_release_team_leadership
+      - prophet_cross_functional_leadership
+    rationale: Focuses on the core product management responsibilities of managing
+      backlogs, release cadences, team leadership, and ensuring the product is
+      delivered reliably.
+  - id: technical_product_fluency
+    label: Technical Product Fluency
+    requirement_refs:
+      - prophet_technical_product_experience
+      - prophet_code_and_developer_fluency
+      - prophet_stack_familiarity
+    rationale: Groups requirements focused on the necessity for hands-on technical
+      expertise, coding ability, and experience working within specific
+      developer tool chains and engineering environments.
+  - id: ai_platform_and_lifecycle_management
+    label: AI Platform and Lifecycle Management
+    requirement_refs:
+      - prophet_llm_product_experience
+      - prophet_agent_lifecycle_management
+      - prophet_advanced_ai_architecture_familiarity
+      - prophet_internal_ai_workflow_products
+    rationale: Covers experience and tasks specific to managing the lifecycle of AI
+      agents, LLM-based products, and internal AI productivity platforms.
+  - id: ai_evaluation_and_quality_assurance
+    label: AI Evaluation and Quality Assurance
+    requirement_refs:
+      - prophet_ai_evaluation_protocols
+      - prophet_ai_quality_definition
+      - prophet_observability_and_incident_learning
+      - prophet_experimentation_and_go_no_go
+    rationale: Focuses on the specialized capability to define success metrics,
+      build testing protocols for probabilistic systems, and maintain quality
+      through production monitoring.
+  - id: strategic_product_design
+    label: Strategic Product Design
+    requirement_refs:
+      - prophet_translate_strategy_to_adoption
+      - prophet_product_judgment_and_acceptance
+      - prophet_ai_tradeoff_analysis
+      - prophet_use_case_to_agent_specification
+    rationale: Centers on the high-level product design tasks of translating
+      strategic vision into specifications, evaluating tradeoffs, and ensuring
+      product-consulting fit.
+  - id: governance_and_enterprise_integration
+    label: Governance and Enterprise Integration
+    requirement_refs:
+      - prophet_enterprise_data_governance
+      - prophet_enterprise_integration_patterns
+      - prophet_secure_enterprise_environment
+    rationale: Groups requirements centered on the regulatory, security, and
+      integration constraints inherent in managing data and systems within an
+      enterprise environment.
+  - id: adoption_communication_and_stakeholder_management
+    label: Adoption, Communication, and Stakeholder Management
+    requirement_refs:
+      - prophet_adoption_enablement
+      - prophet_value_tracking
+      - prophet_stakeholder_communication
+      - prophet_calibrated_communication
+    rationale: Focuses on the interpersonal and organizational tasks of driving
+      adoption, reporting business value, and tailoring communications across
+      diverse stakeholder groups.
+  - id: product_sense_and_user_experience
+    label: Product Sense and User Experience
+    requirement_refs:
+      - prophet_product_sense_ux_quality
+    rationale: Singleton cluster for the specific emphasis on UX quality and the
+      ability to articulate user-centric design improvements.
+  - id: professional_background_and_condition
+    label: Professional Background and Employment Conditions
+    requirement_refs:
+      - prophet_consulting_context
+      - prophet_prototype_to_production
+      - prophet_hybrid_new_york
+    rationale: Combines experiential qualifications (consulting, production track
+      record) with specific employment conditions (location/hybrid status).
+  - id: hiring_qualifying_questions
+    label: Hiring Qualifying Questions
+    requirement_refs:
+      - prophet_qualifying_prototype_question
+      - prophet_qualifying_tradeoff_question
+    rationale: Groups the specific application-stage assessment questions required
+      by the role description.
+unassigned_requirement_refs: []
+overlapping_requirements: []
+generated_by:
+  role: implementer
+  provider: Prophet
+  model: corus-clustering-engine-v1
+  prompt_version: cluster-job-requirements.gemini.v1

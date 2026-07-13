@@ -6,12 +6,16 @@ import type {
   ContextualizeInput,
   FailureAnalysis,
   FailureAnalysisInput,
+  JobRequirementClusteringInput,
+  JobRequirementClusterRepairInput,
+  JobRequirementClusters,
   ProviderReadiness,
   ProviderModelAvailability,
   ProviderResult,
   ReduceCapabilitiesInput,
   ValidateCapabilitiesInput
 } from "../types.js";
+import { validateJobRequirementClusterSchema } from "../lib/jobRequirementClustering.js";
 import { normalizeContext } from "../lib/corusContext.js";
 import { ProviderConfigurationError, ProviderExecutionError } from "./errors.js";
 import { metricsFromUsage, parseJsonObject, textFromOpenAIResponse } from "./providerUtils.js";
@@ -37,6 +41,51 @@ function usageFromOpenAIResponse(data: unknown): unknown {
 
 function usageFromGeminiResponse(data: unknown): unknown {
   return data && typeof data === "object" ? (data as { usageMetadata?: unknown }).usageMetadata : null;
+}
+
+function finishReasonFromGeminiResponse(data: unknown): string | null {
+  const candidates = data && typeof data === "object" ? (data as { candidates?: unknown }).candidates : null;
+  if (!Array.isArray(candidates)) return null;
+  const reason = (candidates[0] as { finishReason?: unknown })?.finishReason;
+  return typeof reason === "string" ? reason : null;
+}
+
+function modelFromGeminiResponse(data: unknown, fallback: string): string {
+  if (data && typeof data === "object") {
+    const modelVersion = (data as { modelVersion?: unknown }).modelVersion;
+    if (typeof modelVersion === "string" && modelVersion.trim()) return modelVersion.replace(/^models\//, "");
+  }
+  return fallback;
+}
+
+function withRuntimeClusterProvenance(value: JobRequirementClusters, provider: string, model: string, promptVersion: string): JobRequirementClusters {
+  return {
+    ...value,
+    generated_by: {
+      role: "implementer",
+      provider,
+      model,
+      prompt_version: promptVersion
+    }
+  };
+}
+
+function geminiResponseSchema(schema: unknown): unknown {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return schema;
+  const record = schema as Record<string, unknown>;
+  const converted: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (key === "const") {
+      converted.enum = [value];
+    } else if (key === "additionalProperties" || key === "minLength") {
+      continue;
+    } else if (Array.isArray(value)) {
+      converted[key] = value.map(geminiResponseSchema);
+    } else {
+      converted[key] = geminiResponseSchema(value);
+    }
+  }
+  return converted;
 }
 
 function usageFromAnthropicResponse(data: unknown): unknown {
@@ -184,6 +233,163 @@ export class GeminiContextualizationProvider implements AgentProvider<Contextual
     output.generation.model = this.model;
     output.generation.prompt_version = this.promptVersion;
     return { output, raw_output: raw, provider: "google", model: this.model, prompt_version: this.promptVersion, metrics: metricsFromUsage(startedAt, usageFromGeminiResponse(raw)) };
+  }
+}
+
+export class GeminiJobRequirementClusteringProvider implements AgentProvider<JobRequirementClusteringInput, JobRequirementClusters> {
+  private readonly model = process.env.GEMINI_MODEL ?? "gemini-1.5-flash";
+  private readonly promptVersion = "cluster-job-requirements.gemini.v1";
+
+  async execute(input: JobRequirementClusteringInput): Promise<ProviderResult<JobRequirementClusters>> {
+    const started = new Date();
+    const startedAt = started.getTime();
+    const apiKey = requireKey("GEMINI_API_KEY", "google");
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: [
+                    "Group the atomic requirements from this job description into the smallest coherent capability domains that could later be assessed against applicant evidence.",
+                    "Preserve every requirement ID. Do not infer anything about an applicant, generate applicant claims, or decide whether a candidate satisfies the role.",
+                    "Return only one JSON object matching corus.job_requirement_clusters.v1.",
+                    JSON.stringify({
+                      job_description_ref: input.job_description_ref,
+                      job_description: input.job_description,
+                      clustering_policy: input.policy,
+                      output_schema: input.schema
+                    })
+                  ].join("\n")
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: geminiResponseSchema(input.schema)
+          }
+        })
+      }
+    );
+
+    const raw = await response.json();
+    const completed = new Date();
+    const metrics = metricsFromUsage(startedAt, usageFromGeminiResponse(raw));
+    const stopReason = finishReasonFromGeminiResponse(raw);
+    const actualModel = modelFromGeminiResponse(raw, this.model);
+    const metadata = {
+      model: actualModel,
+      prompt_version: this.promptVersion,
+      schema_version: "corus.job_requirement_clusters.v1",
+      metrics,
+      stop_reason: stopReason,
+      provider_completion_state: stopReason ?? (response.ok ? "completed" : "provider_error"),
+      started_at: started.toISOString(),
+      completed_at: completed.toISOString()
+    };
+    if (!response.ok) throw new ProviderExecutionError("google", `Gemini job-requirement clustering failed with HTTP ${response.status}.`, raw, { ...metadata, provider_status: "provider_error" });
+    if (stopReason && stopReason !== "STOP") {
+      throw new ProviderExecutionError("google", `Gemini job-requirement clustering did not complete: ${stopReason}.`, raw, metadata);
+    }
+
+    let output;
+    try {
+      output = validateJobRequirementClusterSchema(withRuntimeClusterProvenance(parseJsonObject(textFromGeminiResponse(raw)) as JobRequirementClusters, "google", actualModel, this.promptVersion), "google", this.promptVersion);
+    } catch (error) {
+      throw new ProviderExecutionError("google", error instanceof Error ? error.message : "Gemini returned invalid job-requirement clusters.", raw, metadata);
+    }
+    return { output, raw_output: raw, provider: "google", model: actualModel, prompt_version: this.promptVersion, metrics, started_at: started.toISOString(), completed_at: completed.toISOString() };
+  }
+}
+
+export class GeminiJobRequirementClusterRepairProvider implements AgentProvider<JobRequirementClusterRepairInput, JobRequirementClusters> {
+  private readonly model = process.env.GEMINI_MODEL ?? "gemini-1.5-flash";
+  private readonly promptVersion = "cluster-job-requirements.gemini.repair.v1";
+
+  async execute(input: JobRequirementClusterRepairInput): Promise<ProviderResult<JobRequirementClusters>> {
+    const started = new Date();
+    const startedAt = started.getTime();
+    const apiKey = requireKey("GEMINI_API_KEY", "google");
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: [
+                    "Repair the proposed job-requirement cluster map. The deterministic validator found three original requirements that are neither assigned to a cluster nor explicitly listed as unassigned.",
+                    "Preserve the existing clusters, labels, rationales, and memberships where they remain semantically coherent.",
+                    "Assign each missing requirement to the most coherent existing or new cluster, or explicitly list it as unassigned when no coherent grouping exists.",
+                    "Return a complete replacement cluster artifact containing every original requirement ID. Do not inspect applicant evidence, generate applicant capability claims, or decide whether an applicant satisfies the role.",
+                    "All 34 original requirement IDs must appear. A requirement may appear in more than one cluster only when the overlap is explicitly reported. Unassigned requirements must appear in unassigned_requirement_refs. Unknown requirement IDs are prohibited. Original requirement text and IDs must not be altered. Return the complete artifact, not only the three repairs.",
+                    JSON.stringify({
+                      original_job_description: {
+                        requirement_count: input.integrity_result.checks.original_requirement_count,
+                        complete_preserved_ledger: true,
+                        ref: input.job_description_ref,
+                        context: input.job_description
+                      },
+                      clustering_policy: input.policy,
+                      previous_proposal: {
+                        ref: input.previous_proposal_ref,
+                        proposal: input.previous_proposal
+                      },
+                      integrity_result: {
+                        ref: input.integrity_result_ref,
+                        result: input.integrity_result
+                      },
+                      missing_requirement_refs: input.missing_requirement_refs,
+                      output_schema: input.schema
+                    })
+                  ].join("\n")
+                }
+              ]
+            }
+          ],
+          generationConfig: {
+            responseMimeType: "application/json",
+            responseSchema: geminiResponseSchema(input.schema)
+          }
+        })
+      }
+    );
+
+    const raw = await response.json();
+    const completed = new Date();
+    const metrics = metricsFromUsage(startedAt, usageFromGeminiResponse(raw));
+    const stopReason = finishReasonFromGeminiResponse(raw);
+    const actualModel = modelFromGeminiResponse(raw, this.model);
+    const metadata = {
+      model: actualModel,
+      prompt_version: this.promptVersion,
+      schema_version: "corus.job_requirement_clusters.v1",
+      metrics,
+      stop_reason: stopReason,
+      provider_completion_state: stopReason ?? (response.ok ? "completed" : "provider_error"),
+      started_at: started.toISOString(),
+      completed_at: completed.toISOString()
+    };
+    if (!response.ok) throw new ProviderExecutionError("google", `Gemini job-requirement repair failed with HTTP ${response.status}.`, raw, { ...metadata, provider_status: "provider_error" });
+    if (stopReason && stopReason !== "STOP") {
+      throw new ProviderExecutionError("google", `Gemini job-requirement repair did not complete: ${stopReason}.`, raw, metadata);
+    }
+
+    let output;
+    try {
+      output = validateJobRequirementClusterSchema(withRuntimeClusterProvenance(parseJsonObject(textFromGeminiResponse(raw)) as JobRequirementClusters, "google", actualModel, this.promptVersion), "google", this.promptVersion);
+    } catch (error) {
+      throw new ProviderExecutionError("google", error instanceof Error ? error.message : "Gemini returned invalid repaired job-requirement clusters.", raw, metadata);
+    }
+    return { output, raw_output: raw, provider: "google", model: actualModel, prompt_version: this.promptVersion, metrics, started_at: started.toISOString(), completed_at: completed.toISOString() };
   }
 }
 
