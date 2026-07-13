@@ -1,0 +1,89 @@
+meta:
+  artifact_type: diagnostic_alignment_fixture
+  run_id: b9e4e3fd-0ca2-41f1-884e-dd43c57e5051
+  source_artifact: outputs/b9e4e3fd-0ca2-41f1-884e-dd43c57e5051/10-evaluation-autopsy.yaml
+  status: reviewed_diagnostic_annotations
+  canonical_truth: false
+  replaces_baseline_identifiers: false
+  provider_calls_required: 0
+  notes:
+    - Mappings are reviewed diagnostic annotations from the attempt-2 autopsy.
+    - They are not baseline fixture changes and must not be treated as canonical semantic truth.
+target_scope:
+  generated_target_requirement_refs:
+    - prophet_maia_product_execution
+  denominator_policy: >
+    Baseline capabilities are in scope if they directly request a generated target
+    requirement or if the autopsy reviewed a semantic mapping from an architect-accepted
+    generated capability to that baseline capability.
+  baseline_ids_directly_requesting_generated_target_requirement:
+    - product_execution_and_delivery
+  reviewed_in_scope_baseline_ids:
+    - product_execution_and_delivery
+    - technical_product_judgment
+    - hands_on_technical_prototyping
+    - ai_evaluation_and_release_quality
+    - observability_and_continuous_improvement
+    - agent_and_workflow_system_design
+    - adoption_enablement_and_value_tracking
+    - product_experience_and_ux_quality
+    - cross_functional_and_partner_coordination
+  out_of_scope_baseline_ids:
+    - enterprise_integration_and_security
+    - client_application_and_consulting_delivery
+    - technical_business_communication
+scope_compatibility:
+  comparable: false
+  reason: >
+    Attempt 2 generated capabilities only for prophet_maia_product_execution, while
+    the baseline fixture is a full-role reduction across many Prophet requirements.
+    Diagnostic mapped metrics are useful, but an overall quality verdict is not.
+architect_accepted_projected_ids:
+  - cap_maia_platform_technical_ownership
+  - cap_platform_rollout_and_delivery_improvement
+  - cap_architecture_tradeoff_to_roadmap_judgment
+architect_rejected_ids:
+  - cap_operational_source_of_truth_for_platform_decisions
+mappings:
+  - generated_id: cap_maia_platform_technical_ownership
+    projected: true
+    architect_disposition: adjacent
+    reviewed_baseline_mappings:
+      - baseline_id: agent_and_workflow_system_design
+        match_type: semantic_partial
+      - baseline_id: hands_on_technical_prototyping
+        match_type: semantic_partial
+      - baseline_id: ai_evaluation_and_release_quality
+        match_type: semantic_partial
+      - baseline_id: product_execution_and_delivery
+        match_type: weak_partial
+  - generated_id: cap_platform_rollout_and_delivery_improvement
+    projected: true
+    architect_disposition: adjacent
+    reviewed_baseline_mappings:
+      - baseline_id: product_execution_and_delivery
+        match_type: semantic_partial
+      - baseline_id: adoption_enablement_and_value_tracking
+        match_type: weak_partial
+      - baseline_id: product_experience_and_ux_quality
+        match_type: weak_partial
+      - baseline_id: cross_functional_and_partner_coordination
+        match_type: weak_partial
+  - generated_id: cap_architecture_tradeoff_to_roadmap_judgment
+    projected: true
+    architect_disposition: adjacent
+    reviewed_baseline_mappings:
+      - baseline_id: technical_product_judgment
+        match_type: semantic_partial
+      - baseline_id: observability_and_continuous_improvement
+        match_type: weak_partial
+      - baseline_id: product_execution_and_delivery
+        match_type: weak_partial
+  - generated_id: cap_operational_source_of_truth_for_platform_decisions
+    projected: false
+    architect_disposition: unsupported_for_target
+    reviewed_baseline_mappings:
+      - baseline_id: observability_and_continuous_improvement
+        match_type: semantic_partial_but_target_unsupported
+      - baseline_id: technical_business_communication
+        match_type: weak_partial_but_target_unsupported

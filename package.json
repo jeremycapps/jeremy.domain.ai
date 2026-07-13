@@ -12,7 +12,8 @@
     "live:resume-failure-rerouting": "tsx scripts/resumeFailureRerouting.ts",
     "live:prophet:attempt2": "tsx scripts/runLiveProphetAttempt2.ts",
     "checkpoint:attempt2:validation": "tsx scripts/reprocessAttempt2Validation.ts",
-    "checkpoint:attempt2:architect": "tsx scripts/resolveAttempt2ArchitectCheckpoint.ts"
+    "checkpoint:attempt2:architect": "tsx scripts/resolveAttempt2ArchitectCheckpoint.ts",
+    "diagnostic:attempt2:alignment": "tsx scripts/runAttempt2AlignmentReplay.ts"
   },
   "dependencies": {
     "yaml": "^2.5.1"

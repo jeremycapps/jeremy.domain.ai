@@ -22,6 +22,7 @@ import { createServer } from "../src/server.js";
 import { evaluateCapabilityRun, classifyHallucinations, runProphetFixtureEvaluation } from "../src/lib/corusEvaluation.js";
 import { runCapabilityAnalysis, structuredProviderError } from "../src/lib/corusOrchestrator.js";
 import { resumeFailureReroutingFromCheckpoint } from "../src/lib/corusCheckpointResume.js";
+import { runAttempt2AlignmentReplay } from "../src/lib/corusAlignmentReplay.js";
 import { validateProjectionNoInvention } from "../src/lib/corusProjection.js";
 import { classifyProviderFailure } from "../src/lib/providerFailureClassification.js";
 import { AnthropicCapabilityReductionProvider, capabilityReductionJsonSchema, providerReadiness } from "../src/providers/liveProviders.js";
@@ -276,6 +277,73 @@ async function onlyRunDir(root: string): Promise<string> {
   const dirs = await fs.readdir(path.join(root, "outputs"));
   assert.equal(dirs.length, 1);
   return path.join(root, "outputs", dirs[0]);
+}
+
+async function writeAlignmentReplayInputs(root: string) {
+  const runId = "b9e4e3fd-0ca2-41f1-884e-dd43c57e5051";
+  const runDir = path.join(root, "outputs", runId);
+  const fixtureDir = path.join(root, "test", "fixtures", "prophet");
+  await fs.mkdir(runDir, { recursive: true });
+  await fs.mkdir(fixtureDir, { recursive: true });
+  await fs.copyFile(
+    path.join(process.cwd(), "test", "fixtures", "prophet", "attempt2_alignment_fixture.yaml"),
+    path.join(fixtureDir, "attempt2_alignment_fixture.yaml")
+  );
+  await fs.writeFile(
+    path.join(runDir, "02-capabilities.yaml"),
+    stringify({
+      reducer: "capabilities",
+      inputs: { subject: "jeremy_capps", target: "prophet_senior_product_manager_ai_foundry" },
+      capabilities: [
+        { id: "cap_maia_platform_technical_ownership", requirement_ref: "prophet_maia_product_execution", statement: "A", evidence_refs: ["e1"], support: "adjacent", confidence: "medium", generated_by: { provider: "anthropic", model: "m", prompt_version: "p" } },
+        { id: "cap_platform_rollout_and_delivery_improvement", requirement_ref: "prophet_maia_product_execution", statement: "B", evidence_refs: ["e2"], support: "adjacent", confidence: "medium", generated_by: { provider: "anthropic", model: "m", prompt_version: "p" } },
+        { id: "cap_architecture_tradeoff_to_roadmap_judgment", requirement_ref: "prophet_maia_product_execution", statement: "C", evidence_refs: ["e3"], support: "adjacent", confidence: "medium", generated_by: { provider: "anthropic", model: "m", prompt_version: "p" } },
+        { id: "cap_operational_source_of_truth_for_platform_decisions", requirement_ref: "prophet_maia_product_execution", statement: "D", evidence_refs: ["e4"], support: "unsupported", confidence: "low", generated_by: { provider: "anthropic", model: "m", prompt_version: "p" } }
+      ]
+    }),
+    "utf8"
+  );
+  await fs.writeFile(
+    path.join(runDir, "07-projection.md"),
+    [
+      "# Capability Assessment",
+      "",
+      "## cap_maia_platform_technical_ownership",
+      "A",
+      "## cap_platform_rollout_and_delivery_improvement",
+      "B",
+      "## cap_architecture_tradeoff_to_roadmap_judgment",
+      "C"
+    ].join("\n"),
+    "utf8"
+  );
+  await fs.writeFile(
+    path.join(runDir, "08-evaluation.yaml"),
+    stringify({
+      evaluation: {
+        quality: {
+          requirement_coverage: 1,
+          capability_recall: 0,
+          capability_precision: 0,
+          evidence_accuracy: 1,
+          classification_agreement: 0,
+          unsupported_claims: 1,
+          schema_valid: true,
+          projection_fidelity: 0
+        },
+        differences: [
+          { type: "unsupported_addition", generated_id: "cap_maia_platform_technical_ownership", message: "old" },
+          { type: "unsupported_addition", generated_id: "cap_operational_source_of_truth_for_platform_decisions", message: "old" }
+        ],
+        hallucinations: [
+          { type: "unsupported_capability", capability_id: "cap_operational_source_of_truth_for_platform_decisions", message: "old" }
+        ],
+        verdict: "worse"
+      }
+    }),
+    "utf8"
+  );
+  return { runId, runDir };
 }
 
 test("both subject and target load through the same Context shape", async () => {
@@ -983,6 +1051,43 @@ test("derived latency in any contributing record marks aggregate latency as deri
   });
   assert.equal(report.evaluation.efficiency.latency_ms, 9 + mixed.length - 1);
   assert.equal(report.evaluation.efficiency.measurement_source, "derived");
+});
+
+test("attempt-2 alignment replay computes mapped diagnostics without changing strict metrics", async () => {
+  const root = await tempRoot();
+  const { runId } = await writeAlignmentReplayInputs(root);
+  const replay = await runAttempt2AlignmentReplay({ root, runId });
+
+  assert.deepEqual(replay.strict_metrics_preserved, {
+    requirement_coverage: 1,
+    capability_recall: 0,
+    capability_precision: 0,
+    evidence_accuracy: 1,
+    classification_agreement: 0,
+    unsupported_claims: 1,
+    schema_valid: true,
+    projection_fidelity: 0
+  });
+  assert.equal(replay.diagnostic_metrics.mapped_recall.numerator, 9);
+  assert.equal(replay.diagnostic_metrics.mapped_recall.denominator, 9);
+  assert.equal(replay.diagnostic_metrics.mapped_recall.score, 1);
+  assert.equal(replay.diagnostic_metrics.mapped_precision.score, 1);
+  assert.equal(replay.diagnostic_metrics.adjacent_accepted_projection_fidelity.score, 1);
+  assert.equal(replay.diagnostic_metrics.rejected_output_exclusion.score, 1);
+  assert.equal(replay.scope_compatibility.comparable, false);
+  assert.equal(replay.prior_worse_verdict_status, "indeterminate");
+});
+
+test("attempt-2 alignment replay corrects difference taxonomy and suppresses rejected projection hallucination", async () => {
+  const root = await tempRoot();
+  const { runId } = await writeAlignmentReplayInputs(root);
+  const replay = await runAttempt2AlignmentReplay({ root, runId });
+
+  const rejected = replay.generated_to_baseline_mapping_table.find((row) => row.generated_id === "cap_operational_source_of_truth_for_platform_decisions");
+  assert.equal(rejected?.corrected_difference_label, "rejected_unsupported");
+  const adjacentRows = replay.generated_to_baseline_mapping_table.filter((row) => row.architect_disposition === "adjacent");
+  assert.equal(adjacentRows.every((row) => row.corrected_difference_label === null), true);
+  assert.deepEqual(replay.corrected_difference_taxonomy.hallucinations, []);
 });
 
 test("missing provider credentials produce an explicit readiness result", () => {
