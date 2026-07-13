@@ -395,6 +395,7 @@ export class GeminiJobRequirementClusterRepairProvider implements AgentProvider<
 
 export class AnthropicCapabilityReductionProvider implements AgentProvider<ReduceCapabilitiesInput, CapabilityReduction> {
   private readonly model = process.env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-latest";
+  private readonly maxTokens = Number(process.env.ANTHROPIC_CAPABILITY_REDUCTION_MAX_TOKENS ?? "4000");
 
   async execute(input: ReduceCapabilitiesInput): Promise<ProviderResult<CapabilityReduction>> {
     const startedAt = Date.now();
@@ -433,7 +434,7 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
       },
       body: JSON.stringify({
         model: this.model,
-        max_tokens: 4000,
+        max_tokens: this.maxTokens,
         output_config: {
           format: {
             type: "json_schema",
