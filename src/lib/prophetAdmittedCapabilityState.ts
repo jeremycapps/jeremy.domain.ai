@@ -533,7 +533,7 @@ export async function runProphetAdmittedCapabilityState(input: { root?: string; 
     const clusterReduction = validateReductionReferences(reductionResult.output, { subject: providerApplicantContext, target: clusterTarget }, "anthropic");
     await fs.writeFile(capabilityPath, stringify(clusterReduction), "utf8");
     aggregateCapabilities.push(...clusterReduction.capabilities);
-    records.push(stageRecord({ type: "capability_reduction", input_refs: [artifactRef(root, path.join(runDir, "22-admitted-subject-context.yaml")), artifactRef(root, clusterTargetPath)], output_ref: artifactRef(root, capabilityPath), raw_output_ref: artifactRef(root, path.join(runDir, rawName)), provider: reductionResult.provider, model: reductionResult.model, prompt_version: reductionResult.prompt_version, schema_version: "corus.capability_reduction.v1", validation_status: "completed_valid_output", metrics: reductionResult.metrics }));
+    records.push(stageRecord({ type: "capability_reduction", input_refs: [artifactRef(root, path.join(runDir, "22-admitted-subject-context.yaml")), artifactRef(root, clusterTargetPath)], output_ref: artifactRef(root, capabilityPath), raw_output_ref: artifactRef(root, path.join(runDir, rawName)), provider: reductionResult.provider, model: reductionResult.model, prompt_version: reductionResult.prompt_version, schema_version: "corus.capability_reduction.v1", validation_status: "completed_valid_output", metrics: reductionResult.metrics, model_operation: reductionResult.model_operation }));
     await writeGenerationRecords(runDir, records);
   }
   const reduction: CapabilityReduction = { reducer: "capabilities", inputs: { subject: providerApplicantContext.id, target: targetContext.id }, capabilities: aggregateCapabilities };
@@ -543,7 +543,7 @@ export async function runProphetAdmittedCapabilityState(input: { root?: string; 
   await writeJsonArtifact(runDir, "raw-25-capability-validation-provider.json", validationResult.raw_output ?? {});
   const validation = validationResult.output;
   await fs.writeFile(path.join(runDir, "25-capability-validation.yaml"), stringify(validation), "utf8");
-  records.push(stageRecord({ type: "capability_validation", input_refs: [artifactRef(root, path.join(runDir, "24-capability-candidates.yaml"))], output_ref: artifactRef(root, path.join(runDir, "25-capability-validation.yaml")), raw_output_ref: artifactRef(root, path.join(runDir, "raw-25-capability-validation-provider.json")), provider: validationResult.provider, model: validationResult.model, prompt_version: validationResult.prompt_version, schema_version: "corus.validation.v1", validation_status: validation.status, metrics: validationResult.metrics }));
+  records.push(stageRecord({ type: "capability_validation", input_refs: [artifactRef(root, path.join(runDir, "24-capability-candidates.yaml"))], output_ref: artifactRef(root, path.join(runDir, "25-capability-validation.yaml")), raw_output_ref: artifactRef(root, path.join(runDir, "raw-25-capability-validation-provider.json")), provider: validationResult.provider, model: validationResult.model, prompt_version: validationResult.prompt_version, schema_version: "corus.validation.v1", validation_status: validation.status, metrics: validationResult.metrics, model_operation: validationResult.model_operation }));
   await writeGenerationRecords(runDir, records);
 
   const review = admissionReview(reduction, validation);
@@ -879,7 +879,8 @@ export async function runFilteredCapabilityRegeneration(input: { root?: string; 
             validation_status: "provider_output_invalid",
             provider_completion_state: error.metadata?.provider_completion_state ?? null,
             metrics: error.metadata?.metrics ?? { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" },
-            stop_reason: error.metadata?.stop_reason ?? null
+            stop_reason: error.metadata?.stop_reason ?? null,
+            model_operation: error.metadata?.model_operation
           });
           await writeJsonArtifact(runDir, names.generationRecord, failureRecord);
           records.push(failureRecord);
@@ -892,7 +893,7 @@ export async function runFilteredCapabilityRegeneration(input: { root?: string; 
     }
     await writeJsonArtifact(runDir, names.raw, reductionResult.raw_output ?? {});
     const reduction = validateReductionReferences(reductionResult.output, { subject: providerApplicantContext, target: clusterTarget }, "anthropic");
-    const record = stageRecord({ type: "capability_reduction", input_refs: [artifactRef(root, path.join(runDir, "33-filtered_attempt_1-subject-context.yaml")), artifactRef(root, path.join(runDir, names.target))], output_ref: artifactRef(root, path.join(runDir, names.normalized)), raw_output_ref: artifactRef(root, path.join(runDir, names.raw)), provider: reductionResult.provider, model: reductionResult.model, prompt_version: reductionResult.prompt_version, schema_version: "corus.capability_reduction.v1", validation_status: "pending_deterministic_validation", metrics: reductionResult.metrics });
+    const record = stageRecord({ type: "capability_reduction", input_refs: [artifactRef(root, path.join(runDir, "33-filtered_attempt_1-subject-context.yaml")), artifactRef(root, path.join(runDir, names.target))], output_ref: artifactRef(root, path.join(runDir, names.normalized)), raw_output_ref: artifactRef(root, path.join(runDir, names.raw)), provider: reductionResult.provider, model: reductionResult.model, prompt_version: reductionResult.prompt_version, schema_version: "corus.capability_reduction.v1", validation_status: "pending_deterministic_validation", metrics: reductionResult.metrics, model_operation: reductionResult.model_operation });
     const validation = validateCapabilityEvidencePolicy({ clusterId: cluster.id, reduction, allowedRequirementIds: cluster.requirement_refs, permittedEvidenceIds: admission.permitted_evidence_context_ids, unresolvedEvidenceIds: admission.unresolved_context_ids, partialEvidenceIds: admission.support_ceilings.map((ceiling) => ceiling.context_ref), generationRecord: record, provenanceNormalizedByAdapter: true });
     record.validation_status = validation.status;
     await fs.writeFile(path.join(runDir, names.normalized), stringify(reduction), "utf8");
@@ -943,7 +944,8 @@ export async function runFilteredCapabilityRegeneration(input: { root?: string; 
         validation_status: failure.classification,
         provider_completion_state: "provider_error",
         metrics: { input_tokens: null, output_tokens: null, total_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" },
-        stop_reason: null
+        stop_reason: null,
+        model_operation: error instanceof ProviderExecutionError ? error.metadata?.model_operation : undefined
       });
       await writeJsonArtifact(runDir, "35-filtered_attempt_1-openai-validation-generation-record.json", failureRecord);
       records.push(failureRecord);
@@ -955,7 +957,7 @@ export async function runFilteredCapabilityRegeneration(input: { root?: string; 
   }
   await writeJsonArtifact(runDir, "raw-35-filtered_attempt_1-openai-validation.json", validationResult.raw_output ?? {});
   await fs.writeFile(path.join(runDir, "35-filtered_attempt_1-openai-validation.yaml"), stringify(validationResult.output), "utf8");
-  records.push(stageRecord({ type: "capability_validation", input_refs: [artifactRef(root, path.join(runDir, "34-filtered_attempt_1-capability-candidates.yaml"))], output_ref: artifactRef(root, path.join(runDir, "35-filtered_attempt_1-openai-validation.yaml")), raw_output_ref: artifactRef(root, path.join(runDir, "raw-35-filtered_attempt_1-openai-validation.json")), provider: validationResult.provider, model: validationResult.model, prompt_version: validationResult.prompt_version, schema_version: "corus.validation.v1", validation_status: validationResult.output.status, metrics: validationResult.metrics }));
+  records.push(stageRecord({ type: "capability_validation", input_refs: [artifactRef(root, path.join(runDir, "34-filtered_attempt_1-capability-candidates.yaml"))], output_ref: artifactRef(root, path.join(runDir, "35-filtered_attempt_1-openai-validation.yaml")), raw_output_ref: artifactRef(root, path.join(runDir, "raw-35-filtered_attempt_1-openai-validation.json")), provider: validationResult.provider, model: validationResult.model, prompt_version: validationResult.prompt_version, schema_version: "corus.validation.v1", validation_status: validationResult.output.status, metrics: validationResult.metrics, model_operation: validationResult.model_operation }));
   await writeGenerationRecords(runDir, records);
   const review = admissionReview(aggregateReduction, validationResult.output);
   await fs.writeFile(path.join(runDir, "36-filtered_attempt_1-capability-admission-review.yaml"), stringify({ schema_version: "corus.capability_admission_review.v1", attempt: "filtered_attempt_1", author_action_required: true, proposed_deterministic_admission_decisions: review }), "utf8");

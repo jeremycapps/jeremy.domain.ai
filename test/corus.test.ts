@@ -693,7 +693,10 @@ test("Anthropic reduction request includes the CapabilityReduction structured-ou
   const previousFetch = globalThis.fetch;
   process.env.ANTHROPIC_API_KEY = "test-key";
   let requestBody: Record<string, unknown> | undefined;
-  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+  globalThis.fetch = (async (inputUrl: string | URL | Request, init?: RequestInit) => {
+    if (String(inputUrl).includes("count_tokens")) {
+      return { ok: true, json: async () => ({ input_tokens: 10 }) } as Response;
+    }
     requestBody = JSON.parse(String(init?.body));
     return {
       ok: true,

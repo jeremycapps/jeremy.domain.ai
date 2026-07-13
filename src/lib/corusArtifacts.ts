@@ -44,6 +44,7 @@ export function stageRecord(input: {
   provider_completion_state?: string | null;
   metrics: ProviderMetrics;
   stop_reason?: string | null;
+  model_operation?: unknown;
 }): StageGenerationRecord {
   return {
     id: randomUUID(),

@@ -3,8 +3,9 @@ import path from "node:path";
 import { parse, stringify } from "yaml";
 import type { CapabilityCandidate, CapabilityReduction, Context, ProviderMetrics, StageGenerationRecord } from "../types.js";
 import { ProviderConfigurationError, ProviderExecutionError } from "../providers/errors.js";
-import { configuredModelIds } from "../providers/liveProviders.js";
-import { metricsFromUsage, parseJsonObject, textFromOpenAIResponse } from "../providers/providerUtils.js";
+import { defaultDirectivePacket, executeModelOperation, modelOperationRecord, providerMetricsFromModelOperation, type PromptPayload } from "../providers/modelOperation.js";
+import { modelProfile } from "../providers/modelProfiles.js";
+import { parseJsonObject, textFromOpenAIResponse } from "../providers/providerUtils.js";
 import { artifactRef, stageRecord, writeGenerationRecords, writeJsonArtifact } from "./corusArtifacts.js";
 import { getProjectRoot } from "./paths.js";
 
@@ -304,40 +305,26 @@ export function completedOpenAIClusterValidationIdsFromRecords(records: StageGen
     .filter((id): id is string => Boolean(id));
 }
 
-function requireOpenAIKey(): string {
-  const value = process.env.OPENAI_API_KEY;
-  if (!value) throw new ProviderConfigurationError("openai", "OPENAI_API_KEY is required for live mode.");
-  return value;
-}
-
-function usageFromOpenAIResponse(data: unknown): unknown {
-  return data && typeof data === "object" ? (data as { usage?: unknown }).usage : null;
-}
-
 async function executeOpenAIClusterValidation(packet: ClusterValidationPacket, requestedOutputTokens: number) {
-  const started = new Date();
-  const startedAt = started.getTime();
-  const model = configuredModelIds().openai;
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${requireOpenAIKey()}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model,
-      max_output_tokens: requestedOutputTokens,
-      input: [
-        "Validate this single Corus capability cluster. Return one JSON object only.",
-        "Required shape: {cluster_id,status,validated_capability_ids,rejected_capability_ids,author_review_capability_ids,findings,proposed_support_corrections,evidence_reference_findings,unsupported_claim_findings}.",
-        "Do not introduce capability, requirement, or evidence IDs. Do not raise any capability above an applicable support ceiling.",
-        "Unsupported claims must be rejected or sent to author_review.",
-        JSON.stringify(packet)
-      ].join("\n")
-    })
-  });
-  const raw = await response.json();
-  const completed = new Date();
-  const metrics = metricsFromUsage(startedAt, usageFromOpenAIResponse(raw));
-  const metadata = { model, prompt_version: "validate.openai.cluster.v1", schema_version: "corus.openai_cluster_validation.v1", metrics, started_at: started.toISOString(), completed_at: completed.toISOString(), provider_completion_state: response.ok ? "completed" : "provider_error" };
-  if (!response.ok) throw new ProviderExecutionError("openai", `OpenAI cluster validation failed with HTTP ${response.status}.`, raw, metadata);
+  const payload: PromptPayload = {
+    operation: "cluster_capability_validation",
+    instructions: [
+      "Validate this single Corus capability cluster. Return one JSON object only.",
+      "Required shape: {cluster_id,status,validated_capability_ids,rejected_capability_ids,author_review_capability_ids,findings,proposed_support_corrections,evidence_reference_findings,unsupported_claim_findings}.",
+      "Do not introduce capability, requirement, or evidence IDs. Do not raise any capability above an applicable support ceiling.",
+      "Unsupported claims must be rejected or sent to author_review."
+    ],
+    input: packet,
+    promptVersion: "validate.openai.cluster.v1",
+    schemaVersion: "corus.openai_cluster_validation.v1",
+    metadata: { max_output_tokens: requestedOutputTokens }
+  };
+  const directive = { ...defaultDirectivePacket, max_output_tokens: requestedOutputTokens, max_requested_tokens: 14000, rate_limit_tokens_per_minute: 50000, safety_margin: 0.1 };
+  const result = await executeModelOperation({ profile: modelProfile("openai-cluster-validator"), payload, directive, mode: "execute" });
+  const raw = result.raw_output;
+  const metrics = providerMetricsFromModelOperation(result);
+  const metadata = { model: result.model, prompt_version: "validate.openai.cluster.v1", schema_version: "corus.openai_cluster_validation.v1", metrics, provider_completion_state: result.completion_state, model_operation: modelOperationRecord(result) };
+  if (result.admission_status === "withheld" || result.provider_error_classification) throw new ProviderExecutionError("openai", `OpenAI cluster validation failed: ${result.provider_error_classification ?? result.completion_state}.`, raw, metadata);
   let output: ClusterValidationOutput;
   try {
     output = normalizeClusterValidationOutput(parseJsonObject(textFromOpenAIResponse(raw)));
@@ -347,7 +334,7 @@ async function executeOpenAIClusterValidation(packet: ClusterValidationPacket, r
       provider_completion_state: "provider_output_invalid"
     });
   }
-  return { output, raw_output: raw, provider: "openai", model, prompt_version: "validate.openai.cluster.v1", metrics, started_at: started.toISOString(), completed_at: completed.toISOString() };
+  return { output, raw_output: raw, provider: "openai", model: result.model, prompt_version: "validate.openai.cluster.v1", metrics, model_operation: modelOperationRecord(result) };
 }
 
 function validationArtifactNames(clusterId: string) {
@@ -445,13 +432,14 @@ export async function runClusterScopedOpenAIValidation(input: { root?: string; r
           output_ref: artifactRef(root, path.join(runDir, names.failure)),
           raw_output_ref: artifactRef(root, path.join(runDir, names.rawError)),
           provider: error.provider,
-          model: error.metadata?.model ?? configuredModelIds().openai,
+          model: error.metadata?.model ?? modelProfile("openai-cluster-validator").model,
           prompt_version: "validate.openai.cluster.v1",
           schema_version: "corus.openai_cluster_validation.v1",
           validation_status: classification,
           provider_completion_state: error.metadata?.provider_completion_state ?? null,
           metrics: error.metadata?.metrics ?? { input_tokens: null, output_tokens: null, total_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" },
-          stop_reason: null
+          stop_reason: null,
+          model_operation: error.metadata?.model_operation
         });
         await writeJsonArtifact(runDir, names.record, failureRecord);
         records.push(failureRecord);
@@ -465,7 +453,7 @@ export async function runClusterScopedOpenAIValidation(input: { root?: string; r
     const deterministic = validateClusterValidationOutput(result.output, packet);
     await fs.writeFile(path.join(runDir, names.normalized), stringify(result.output), "utf8");
     await fs.writeFile(path.join(runDir, names.deterministic), stringify(deterministic), "utf8");
-    const record = stageRecord({ type: "capability_validation", started_at: result.started_at, completed_at: result.completed_at, input_refs: [artifactRef(root, path.join(runDir, names.packet))], output_ref: artifactRef(root, path.join(runDir, names.normalized)), raw_output_ref: artifactRef(root, path.join(runDir, names.raw)), provider: result.provider, model: result.model, prompt_version: result.prompt_version, schema_version: "corus.openai_cluster_validation.v1", validation_status: deterministic.status, provider_completion_state: "completed", metrics: result.metrics });
+    const record = stageRecord({ type: "capability_validation", input_refs: [artifactRef(root, path.join(runDir, names.packet))], output_ref: artifactRef(root, path.join(runDir, names.normalized)), raw_output_ref: artifactRef(root, path.join(runDir, names.raw)), provider: result.provider, model: result.model, prompt_version: result.prompt_version, schema_version: "corus.openai_cluster_validation.v1", validation_status: deterministic.status, provider_completion_state: "completed", metrics: result.metrics, model_operation: result.model_operation });
     await writeJsonArtifact(runDir, names.record, record);
     records.push(record);
     await writeGenerationRecords(runDir, records);

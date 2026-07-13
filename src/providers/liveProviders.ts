@@ -18,7 +18,9 @@ import type {
 import { validateJobRequirementClusterSchema } from "../lib/jobRequirementClustering.js";
 import { normalizeContext } from "../lib/corusContext.js";
 import { ProviderConfigurationError, ProviderExecutionError } from "./errors.js";
-import { metricsFromUsage, parseJsonObject, textFromOpenAIResponse } from "./providerUtils.js";
+import { parseJsonObject, textFromOpenAIResponse } from "./providerUtils.js";
+import { defaultDirectivePacket, executeModelOperation, modelOperationRecord, providerMetricsFromModelOperation, type DirectivePacket, type PromptPayload } from "./modelOperation.js";
+import { configuredModelIds, modelProfile } from "./modelProfiles.js";
 import {
   validateCapabilityValidationOutput,
   validateContextOutput,
@@ -33,14 +35,6 @@ function requireKey(name: string, provider: string): string {
     throw new ProviderConfigurationError(provider, `${name} is required for live mode.`);
   }
   return value;
-}
-
-function usageFromOpenAIResponse(data: unknown): unknown {
-  return data && typeof data === "object" ? (data as { usage?: unknown }).usage : null;
-}
-
-function usageFromGeminiResponse(data: unknown): unknown {
-  return data && typeof data === "object" ? (data as { usageMetadata?: unknown }).usageMetadata : null;
 }
 
 function finishReasonFromGeminiResponse(data: unknown): string | null {
@@ -86,10 +80,6 @@ function geminiResponseSchema(schema: unknown): unknown {
     }
   }
   return converted;
-}
-
-function usageFromAnthropicResponse(data: unknown): unknown {
-  return data && typeof data === "object" ? (data as { usage?: unknown }).usage : null;
 }
 
 function textFromGeminiResponse(data: unknown): string {
@@ -146,13 +136,7 @@ function modelNameFromGemini(name: string): string {
   return name.startsWith("models/") ? name.slice("models/".length) : name;
 }
 
-export function configuredModelIds() {
-  return {
-    google: process.env.GEMINI_MODEL ?? "gemini-1.5-flash",
-    anthropic: process.env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-latest",
-    openai: process.env.OPENAI_MODEL ?? "gpt-4.1-mini"
-  };
-}
+export { configuredModelIds } from "./modelProfiles.js";
 
 export async function checkConfiguredModels(): Promise<ProviderModelAvailability[]> {
   const models = configuredModelIds();
@@ -207,41 +191,26 @@ export async function checkConfiguredModels(): Promise<ProviderModelAvailability
 }
 
 export class GeminiContextualizationProvider implements AgentProvider<ContextualizeInput, Context> {
-  private readonly model = process.env.GEMINI_MODEL ?? "gemini-1.5-flash";
+  private readonly profile = modelProfile("google-contextualizer");
   private readonly promptVersion = "contextualize.gemini.v1";
 
   async execute(input: ContextualizeInput): Promise<ProviderResult<Context>> {
-    const startedAt = Date.now();
-    const apiKey = requireKey("GEMINI_API_KEY", "google");
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: [
-                    "Return one JSON object matching the generic Corus Context schema.",
-                    "Do not derive capabilities. Preserve source references.",
-                    `kind: ${input.kind}`,
-                    `position: ${input.position}`,
-                    `input_ref: ${input.input_ref}`,
-                    JSON.stringify(input.source)
-                  ].join("\n")
-                }
-              ]
-            }
-          ],
-          generationConfig: { responseMimeType: "application/json" }
-        })
-      }
-    );
-
-    const raw = await response.json();
-    if (!response.ok) throw new ProviderExecutionError("google", `Gemini contextualization failed with HTTP ${response.status}.`, raw);
+    const payload: PromptPayload = {
+      operation: "contextualize",
+      instructions: [
+        "Return one JSON object matching the generic Corus Context schema.",
+        "Do not derive capabilities. Preserve source references.",
+        `kind: ${input.kind}`,
+        `position: ${input.position}`,
+        `input_ref: ${input.input_ref}`
+      ],
+      input: input.source,
+      promptVersion: this.promptVersion,
+      schemaVersion: "corus.context.v1"
+    };
+    const result = await executeModelOperation({ profile: this.profile, payload, directive: defaultDirectivePacket, mode: "execute" });
+    const raw = result.raw_output;
+    if (result.admission_status === "withheld" || result.provider_error_classification) throw new ProviderExecutionError("google", `Gemini contextualization failed: ${result.provider_error_classification ?? result.completion_state}.`, raw, { model: this.profile.model, prompt_version: this.promptVersion, schema_version: "corus.context.v1", metrics: providerMetricsFromModelOperation(result), provider_completion_state: result.completion_state, model_operation: modelOperationRecord(result) });
     let output;
     try {
       const parsed = parseJsonObject(textFromGeminiResponse(raw));
@@ -250,69 +219,44 @@ export class GeminiContextualizationProvider implements AgentProvider<Contextual
       throw new ProviderExecutionError("google", error instanceof Error ? error.message : "Gemini returned invalid structured output.", raw);
     }
     output.generation.provider = "google";
-    output.generation.model = this.model;
+    output.generation.model = this.profile.model;
     output.generation.prompt_version = this.promptVersion;
-    return { output, raw_output: raw, provider: "google", model: this.model, prompt_version: this.promptVersion, metrics: metricsFromUsage(startedAt, usageFromGeminiResponse(raw)) };
+    return { output, raw_output: raw, provider: "google", model: this.profile.model, prompt_version: this.promptVersion, metrics: providerMetricsFromModelOperation(result), model_operation: modelOperationRecord(result) };
   }
 }
 
 export class GeminiJobRequirementClusteringProvider implements AgentProvider<JobRequirementClusteringInput, JobRequirementClusters> {
-  private readonly model = process.env.GEMINI_MODEL ?? "gemini-1.5-flash";
+  private readonly profile = modelProfile("google-job-requirement-clusterer");
   private readonly promptVersion = "cluster-job-requirements.gemini.v1";
 
   async execute(input: JobRequirementClusteringInput): Promise<ProviderResult<JobRequirementClusters>> {
-    const started = new Date();
-    const startedAt = started.getTime();
-    const apiKey = requireKey("GEMINI_API_KEY", "google");
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: [
-                    "Group the atomic requirements from this job description into the smallest coherent capability domains that could later be assessed against applicant evidence.",
-                    "Preserve every requirement ID. Do not infer anything about an applicant, generate applicant claims, or decide whether a candidate satisfies the role.",
-                    "Return only one JSON object matching corus.job_requirement_clusters.v1.",
-                    JSON.stringify({
-                      job_description_ref: input.job_description_ref,
-                      job_description: input.job_description,
-                      clustering_policy: input.policy,
-                      output_schema: input.schema
-                    })
-                  ].join("\n")
-                }
-              ]
-            }
-          ],
-          generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: geminiResponseSchema(input.schema)
-          }
-        })
-      }
-    );
-
-    const raw = await response.json();
-    const completed = new Date();
-    const metrics = metricsFromUsage(startedAt, usageFromGeminiResponse(raw));
+    const payload: PromptPayload = {
+      operation: "job_requirement_clustering",
+      instructions: [
+        "Group the atomic requirements from this job description into the smallest coherent capability domains that could later be assessed against applicant evidence.",
+        "Preserve every requirement ID. Do not infer anything about an applicant, generate applicant claims, or decide whether a candidate satisfies the role.",
+        "Return only one JSON object matching corus.job_requirement_clusters.v1."
+      ],
+      input: { job_description_ref: input.job_description_ref, job_description: input.job_description, clustering_policy: input.policy, output_schema: input.schema },
+      outputSchema: geminiResponseSchema(input.schema),
+      promptVersion: this.promptVersion,
+      schemaVersion: "corus.job_requirement_clusters.v1"
+    };
+    const result = await executeModelOperation({ profile: this.profile, payload, directive: defaultDirectivePacket, mode: "execute" });
+    const raw = result.raw_output;
+    const metrics = providerMetricsFromModelOperation(result);
     const stopReason = finishReasonFromGeminiResponse(raw);
-    const actualModel = modelFromGeminiResponse(raw, this.model);
+    const actualModel = modelFromGeminiResponse(raw, this.profile.model);
     const metadata = {
       model: actualModel,
       prompt_version: this.promptVersion,
       schema_version: "corus.job_requirement_clusters.v1",
       metrics,
       stop_reason: stopReason,
-      provider_completion_state: stopReason ?? (response.ok ? "completed" : "provider_error"),
-      started_at: started.toISOString(),
-      completed_at: completed.toISOString()
+      provider_completion_state: result.completion_state,
+      model_operation: modelOperationRecord(result)
     };
-    if (!response.ok) throw new ProviderExecutionError("google", `Gemini job-requirement clustering failed with HTTP ${response.status}.`, raw, { ...metadata, provider_status: "provider_error" });
+    if (result.admission_status === "withheld" || result.provider_error_classification) throw new ProviderExecutionError("google", `Gemini job-requirement clustering failed: ${result.provider_error_classification ?? result.completion_state}.`, raw, { ...metadata, provider_status: "provider_error" });
     if (stopReason && stopReason !== "STOP") {
       throw new ProviderExecutionError("google", `Gemini job-requirement clustering did not complete: ${stopReason}.`, raw, metadata);
     }
@@ -323,82 +267,44 @@ export class GeminiJobRequirementClusteringProvider implements AgentProvider<Job
     } catch (error) {
       throw new ProviderExecutionError("google", error instanceof Error ? error.message : "Gemini returned invalid job-requirement clusters.", raw, metadata);
     }
-    return { output, raw_output: raw, provider: "google", model: actualModel, prompt_version: this.promptVersion, metrics, started_at: started.toISOString(), completed_at: completed.toISOString() };
+    return { output, raw_output: raw, provider: "google", model: actualModel, prompt_version: this.promptVersion, metrics, model_operation: modelOperationRecord(result) };
   }
 }
 
 export class GeminiJobRequirementClusterRepairProvider implements AgentProvider<JobRequirementClusterRepairInput, JobRequirementClusters> {
-  private readonly model = process.env.GEMINI_MODEL ?? "gemini-1.5-flash";
+  private readonly profile = modelProfile("google-job-requirement-cluster-repairer");
   private readonly promptVersion = "cluster-job-requirements.gemini.repair.v1";
 
   async execute(input: JobRequirementClusterRepairInput): Promise<ProviderResult<JobRequirementClusters>> {
-    const started = new Date();
-    const startedAt = started.getTime();
-    const apiKey = requireKey("GEMINI_API_KEY", "google");
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: [
-                    "Repair the proposed job-requirement cluster map. The deterministic validator found three original requirements that are neither assigned to a cluster nor explicitly listed as unassigned.",
-                    "Preserve the existing clusters, labels, rationales, and memberships where they remain semantically coherent.",
-                    "Assign each missing requirement to the most coherent existing or new cluster, or explicitly list it as unassigned when no coherent grouping exists.",
-                    "Return a complete replacement cluster artifact containing every original requirement ID. Do not inspect applicant evidence, generate applicant capability claims, or decide whether an applicant satisfies the role.",
-                    "All 34 original requirement IDs must appear. A requirement may appear in more than one cluster only when the overlap is explicitly reported. Unassigned requirements must appear in unassigned_requirement_refs. Unknown requirement IDs are prohibited. Original requirement text and IDs must not be altered. Return the complete artifact, not only the three repairs.",
-                    JSON.stringify({
-                      original_job_description: {
-                        requirement_count: input.integrity_result.checks.original_requirement_count,
-                        complete_preserved_ledger: true,
-                        ref: input.job_description_ref,
-                        context: input.job_description
-                      },
-                      clustering_policy: input.policy,
-                      previous_proposal: {
-                        ref: input.previous_proposal_ref,
-                        proposal: input.previous_proposal
-                      },
-                      integrity_result: {
-                        ref: input.integrity_result_ref,
-                        result: input.integrity_result
-                      },
-                      missing_requirement_refs: input.missing_requirement_refs,
-                      output_schema: input.schema
-                    })
-                  ].join("\n")
-                }
-              ]
-            }
-          ],
-          generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: geminiResponseSchema(input.schema)
-          }
-        })
-      }
-    );
-
-    const raw = await response.json();
-    const completed = new Date();
-    const metrics = metricsFromUsage(startedAt, usageFromGeminiResponse(raw));
+    const payload: PromptPayload = {
+      operation: "job_requirement_cluster_repair",
+      instructions: [
+        "Repair the proposed job-requirement cluster map. The deterministic validator found three original requirements that are neither assigned to a cluster nor explicitly listed as unassigned.",
+        "Preserve the existing clusters, labels, rationales, and memberships where they remain semantically coherent.",
+        "Assign each missing requirement to the most coherent existing or new cluster, or explicitly list it as unassigned when no coherent grouping exists.",
+        "Return a complete replacement cluster artifact containing every original requirement ID. Do not inspect applicant evidence, generate applicant capability claims, or decide whether an applicant satisfies the role.",
+        "All 34 original requirement IDs must appear. A requirement may appear in more than one cluster only when the overlap is explicitly reported. Unassigned requirements must appear in unassigned_requirement_refs. Unknown requirement IDs are prohibited. Original requirement text and IDs must not be altered. Return the complete artifact, not only the three repairs."
+      ],
+      input: { original_job_description: { requirement_count: input.integrity_result.checks.original_requirement_count, complete_preserved_ledger: true, ref: input.job_description_ref, context: input.job_description }, clustering_policy: input.policy, previous_proposal: { ref: input.previous_proposal_ref, proposal: input.previous_proposal }, integrity_result: { ref: input.integrity_result_ref, result: input.integrity_result }, missing_requirement_refs: input.missing_requirement_refs, output_schema: input.schema },
+      outputSchema: geminiResponseSchema(input.schema),
+      promptVersion: this.promptVersion,
+      schemaVersion: "corus.job_requirement_clusters.v1"
+    };
+    const result = await executeModelOperation({ profile: this.profile, payload, directive: defaultDirectivePacket, mode: "execute" });
+    const raw = result.raw_output;
+    const metrics = providerMetricsFromModelOperation(result);
     const stopReason = finishReasonFromGeminiResponse(raw);
-    const actualModel = modelFromGeminiResponse(raw, this.model);
+    const actualModel = modelFromGeminiResponse(raw, this.profile.model);
     const metadata = {
       model: actualModel,
       prompt_version: this.promptVersion,
       schema_version: "corus.job_requirement_clusters.v1",
       metrics,
       stop_reason: stopReason,
-      provider_completion_state: stopReason ?? (response.ok ? "completed" : "provider_error"),
-      started_at: started.toISOString(),
-      completed_at: completed.toISOString()
+      provider_completion_state: result.completion_state,
+      model_operation: modelOperationRecord(result)
     };
-    if (!response.ok) throw new ProviderExecutionError("google", `Gemini job-requirement repair failed with HTTP ${response.status}.`, raw, { ...metadata, provider_status: "provider_error" });
+    if (result.admission_status === "withheld" || result.provider_error_classification) throw new ProviderExecutionError("google", `Gemini job-requirement repair failed: ${result.provider_error_classification ?? result.completion_state}.`, raw, { ...metadata, provider_status: "provider_error" });
     if (stopReason && stopReason !== "STOP") {
       throw new ProviderExecutionError("google", `Gemini job-requirement repair did not complete: ${stopReason}.`, raw, metadata);
     }
@@ -409,18 +315,15 @@ export class GeminiJobRequirementClusterRepairProvider implements AgentProvider<
     } catch (error) {
       throw new ProviderExecutionError("google", error instanceof Error ? error.message : "Gemini returned invalid repaired job-requirement clusters.", raw, metadata);
     }
-    return { output, raw_output: raw, provider: "google", model: actualModel, prompt_version: this.promptVersion, metrics, started_at: started.toISOString(), completed_at: completed.toISOString() };
+    return { output, raw_output: raw, provider: "google", model: actualModel, prompt_version: this.promptVersion, metrics, model_operation: modelOperationRecord(result) };
   }
 }
 
 export class AnthropicCapabilityReductionProvider implements AgentProvider<ReduceCapabilitiesInput, CapabilityReduction> {
-  private readonly model = process.env.ANTHROPIC_MODEL ?? "claude-3-5-sonnet-latest";
+  private readonly profile = modelProfile("anthropic-capability-reducer");
   private readonly maxTokens = Number(process.env.ANTHROPIC_CAPABILITY_REDUCTION_MAX_TOKENS ?? "4000");
 
   async execute(input: ReduceCapabilitiesInput): Promise<ProviderResult<CapabilityReduction>> {
-    const started = new Date();
-    const startedAt = started.getTime();
-    const apiKey = requireKey("ANTHROPIC_API_KEY", "anthropic");
     const isRecovery = Boolean(input.failure_analysis);
     const promptVersion = isRecovery ? "reduce.anthropic.recovery.v1" : "reduce.anthropic.v1";
     const content = isRecovery
@@ -446,52 +349,25 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
           "Do not validate your own claims.",
           JSON.stringify(input)
         ].join("\n");
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: this.model,
-        max_tokens: this.maxTokens,
-        thinking: {
-          type: "disabled"
-        },
-        output_config: {
-          format: {
-            type: "json_schema",
-            schema: capabilityReductionJsonSchema()
-          }
-        },
-        messages: [
-          {
-            role: "user",
-            content
-          }
-        ]
-      })
-    });
-
-    const raw = await response.json();
-    const completed = new Date();
-    const metrics = metricsFromUsage(startedAt, usageFromAnthropicResponse(raw));
+    const directive: DirectivePacket = { ...defaultDirectivePacket, max_output_tokens: this.maxTokens, max_requested_tokens: defaultDirectivePacket.max_input_tokens + this.maxTokens };
+    const payload: PromptPayload = { operation: "capability_reduction", instructions: [content], input: {}, outputSchema: capabilityReductionJsonSchema(), promptVersion, schemaVersion: "corus.capability_reduction.v1", metadata: { thinking: { type: "disabled" } } };
+    const result = await executeModelOperation({ profile: this.profile, payload, directive, mode: "execute" });
+    const raw = result.raw_output;
+    const metrics = providerMetricsFromModelOperation(result);
     const stopReason = raw && typeof raw === "object" && typeof (raw as { stop_reason?: unknown }).stop_reason === "string" ? (raw as { stop_reason: string }).stop_reason : null;
     const metadata = {
-      model: this.model,
+      model: this.profile.model,
       prompt_version: promptVersion,
       schema_version: "corus.capability_reduction.v1",
       metrics,
       stop_reason: stopReason,
-      provider_completion_state: stopReason ?? (response.ok ? "completed" : "provider_error"),
-      started_at: started.toISOString(),
-      completed_at: completed.toISOString()
+      provider_completion_state: result.completion_state,
+      model_operation: modelOperationRecord(result)
     };
-    if (!response.ok) throw new ProviderExecutionError("anthropic", `Anthropic reduction failed with HTTP ${response.status}.`, raw, { ...metadata, provider_status: "provider_error" });
+    if (result.admission_status === "withheld" || result.provider_error_classification) throw new ProviderExecutionError("anthropic", `Anthropic reduction failed: ${result.provider_error_classification ?? result.completion_state}.`, raw, { ...metadata, provider_status: "provider_error" });
     let output;
     try {
-      output = validateReductionReferences(normalizeCapabilityReductionProvenance(validateReductionOutput(parseJsonObject(textFromAnthropicResponse(raw)), "anthropic"), "anthropic", this.model, promptVersion), input.contexts, "anthropic");
+      output = validateReductionReferences(normalizeCapabilityReductionProvenance(validateReductionOutput(parseJsonObject(textFromAnthropicResponse(raw)), "anthropic"), "anthropic", this.profile.model, promptVersion), input.contexts, "anthropic");
     } catch (error) {
       const classification = classifyAnthropicCapabilityReductionFailure(raw, error);
       throw new ProviderExecutionError("anthropic", error instanceof Error ? error.message : "Anthropic returned invalid structured output.", raw, {
@@ -499,90 +375,57 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
         provider_completion_state: classification
       });
     }
-    return { output, raw_output: raw, provider: "anthropic", model: this.model, prompt_version: promptVersion, metrics, started_at: started.toISOString(), completed_at: completed.toISOString() };
+    return { output, raw_output: raw, provider: "anthropic", model: this.profile.model, prompt_version: promptVersion, metrics, model_operation: modelOperationRecord(result) };
   }
 }
 
 export class OpenAIValidationProvider implements AgentProvider<ValidateCapabilitiesInput, CapabilityValidation> {
-  private readonly model = process.env.OPENAI_MODEL ?? "gpt-4.1-mini";
+  private readonly profile = modelProfile("openai-capability-validator");
   private readonly promptVersion = "validate.openai.v1";
 
   async execute(input: ValidateCapabilitiesInput): Promise<ProviderResult<CapabilityValidation>> {
-    const startedAt = Date.now();
-    const apiKey = requireKey("OPENAI_API_KEY", "openai");
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: this.model,
-        input: [
-          "Validate Corus capability candidates against subject and target contexts.",
-          "Return JSON only: {status, findings, validated_capability_ids, rejected_capability_ids}.",
-          "Unsupported claims cannot pass. Schema/product ambiguity must be architect_required.",
-          JSON.stringify(input)
-        ].join("\n")
-      })
-    });
-
-    const raw = await response.json();
-    if (!response.ok) throw new ProviderExecutionError("openai", `OpenAI validation failed with HTTP ${response.status}.`, raw);
+    const payload: PromptPayload = { operation: "capability_validation", instructions: ["Validate Corus capability candidates against subject and target contexts.", "Return JSON only: {status, findings, validated_capability_ids, rejected_capability_ids}.", "Unsupported claims cannot pass. Schema/product ambiguity must be architect_required."], input, promptVersion: this.promptVersion, schemaVersion: "corus.validation.v1" };
+    const result = await executeModelOperation({ profile: this.profile, payload, directive: defaultDirectivePacket, mode: "execute" });
+    const raw = result.raw_output;
+    if (result.admission_status === "withheld" || result.provider_error_classification) throw new ProviderExecutionError("openai", `OpenAI validation failed: ${result.provider_error_classification ?? result.completion_state}.`, raw, { model: this.profile.model, prompt_version: this.promptVersion, schema_version: "corus.validation.v1", metrics: providerMetricsFromModelOperation(result), provider_completion_state: result.completion_state, model_operation: modelOperationRecord(result) });
     let output;
     try {
       output = validateCapabilityValidationOutput(parseJsonObject(textFromOpenAIResponse(raw)), "openai");
     } catch (error) {
       throw new ProviderExecutionError("openai", error instanceof Error ? error.message : "OpenAI returned invalid structured output.", raw, {
-        model: this.model,
+        model: this.profile.model,
         prompt_version: this.promptVersion,
         schema_version: "corus.validation.v1",
-        metrics: metricsFromUsage(startedAt, usageFromOpenAIResponse(raw))
+        metrics: providerMetricsFromModelOperation(result),
+        model_operation: modelOperationRecord(result)
       });
     }
-    return { output, raw_output: raw, provider: "openai", model: this.model, prompt_version: this.promptVersion, metrics: metricsFromUsage(startedAt, usageFromOpenAIResponse(raw)) };
+    return { output, raw_output: raw, provider: "openai", model: this.profile.model, prompt_version: this.promptVersion, metrics: providerMetricsFromModelOperation(result), model_operation: modelOperationRecord(result) };
   }
 }
 
 export class OpenAIFailureAnalysisProvider implements AgentProvider<FailureAnalysisInput, FailureAnalysis> {
-  private readonly model = process.env.OPENAI_MODEL ?? "gpt-4.1-mini";
+  private readonly profile = modelProfile("openai-failure-analyzer");
   private readonly promptVersion = "failure-analysis.openai.v1";
 
   async execute(input: FailureAnalysisInput): Promise<ProviderResult<FailureAnalysis>> {
-    const startedAt = Date.now();
-    const apiKey = requireKey("OPENAI_API_KEY", "openai");
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: this.model,
-        input: [
-          "Analyze a malformed Corus inter-agent handoff.",
-          "Do not redesign schemas. Do not browse. Do not change product meaning.",
-          "Classify as correctable only when the correction preserves the existing schema and reducer semantics.",
-          "Return JSON only matching {status, failed_stage, failure_type, diagnosis, corrections, retry_stage, architecture_change_required, confidence}.",
-          JSON.stringify(input)
-        ].join("\n")
-      })
-    });
-
-    const raw = await response.json();
-    if (!response.ok) throw new ProviderExecutionError("openai", `OpenAI failure analysis failed with HTTP ${response.status}.`, raw);
+    const payload: PromptPayload = { operation: "failure_analysis", instructions: ["Analyze a malformed Corus inter-agent handoff.", "Do not redesign schemas. Do not browse. Do not change product meaning.", "Classify as correctable only when the correction preserves the existing schema and reducer semantics.", "Return JSON only matching {status, failed_stage, failure_type, diagnosis, corrections, retry_stage, architecture_change_required, confidence}."], input, promptVersion: this.promptVersion, schemaVersion: "corus.failure_analysis.v1" };
+    const result = await executeModelOperation({ profile: this.profile, payload, directive: defaultDirectivePacket, mode: "execute" });
+    const raw = result.raw_output;
+    if (result.admission_status === "withheld" || result.provider_error_classification) throw new ProviderExecutionError("openai", `OpenAI failure analysis failed: ${result.provider_error_classification ?? result.completion_state}.`, raw, { model: this.profile.model, prompt_version: this.promptVersion, schema_version: "corus.failure_analysis.v1", metrics: providerMetricsFromModelOperation(result), provider_completion_state: result.completion_state, model_operation: modelOperationRecord(result) });
     let output;
     try {
       output = validateFailureAnalysisOutput(parseJsonObject(textFromOpenAIResponse(raw)), "openai");
     } catch (error) {
       throw new ProviderExecutionError("openai", error instanceof Error ? error.message : "OpenAI returned invalid failure-analysis output.", raw, {
-        model: this.model,
+        model: this.profile.model,
         prompt_version: this.promptVersion,
         schema_version: "corus.failure_analysis.v1",
-        metrics: metricsFromUsage(startedAt, usageFromOpenAIResponse(raw))
+        metrics: providerMetricsFromModelOperation(result),
+        model_operation: modelOperationRecord(result)
       });
     }
-    return { output, raw_output: raw, provider: "openai", model: this.model, prompt_version: this.promptVersion, metrics: metricsFromUsage(startedAt, usageFromOpenAIResponse(raw)) };
+    return { output, raw_output: raw, provider: "openai", model: this.profile.model, prompt_version: this.promptVersion, metrics: providerMetricsFromModelOperation(result), model_operation: modelOperationRecord(result) };
   }
 }
 

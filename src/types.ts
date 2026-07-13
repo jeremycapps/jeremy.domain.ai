@@ -234,6 +234,7 @@ export interface StageGenerationRecord {
     measurement_source: "measured" | "derived" | "unavailable";
   };
   stop_reason?: string | null;
+  model_operation?: unknown;
 }
 
 export interface ProviderMetrics {
@@ -254,6 +255,7 @@ export interface ProviderResult<TOutput> {
   metrics: ProviderMetrics;
   started_at?: string;
   completed_at?: string;
+  model_operation?: unknown;
 }
 
 export interface AgentProvider<TInput, TOutput> {

@@ -94,7 +94,8 @@ async function executeProviderStage<T>(
             estimated_cost_usd: null,
             latency_ms: null,
             measurement_source: "unavailable"
-          }
+          },
+          model_operation: metadata?.model_operation
         })
       );
       await writeGenerationRecords(outputDir, checkpoint.records);
@@ -269,7 +270,8 @@ export async function runCapabilityAnalysis(
       prompt_version: subjectResult.prompt_version,
       schema_version: subjectResult.output.generation.schema_version,
       validation_status: "created",
-      metrics: subjectResult.metrics
+      metrics: subjectResult.metrics,
+      model_operation: subjectResult.model_operation
     })
   );
 
@@ -301,7 +303,8 @@ export async function runCapabilityAnalysis(
       prompt_version: targetResult.prompt_version,
       schema_version: targetResult.output.generation.schema_version,
       validation_status: "created",
-      metrics: targetResult.metrics
+      metrics: targetResult.metrics,
+      model_operation: targetResult.model_operation
     })
   );
 
@@ -336,7 +339,8 @@ export async function runCapabilityAnalysis(
         prompt_version: "reduce.anthropic.v1",
         schema_version: "corus.capabilities.v1",
         validation_status: "schema_invalid_attempt_1",
-        metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" }
+        metrics: error.metadata?.metrics ?? { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" },
+        model_operation: error.metadata?.model_operation
       })
     );
 
@@ -373,7 +377,8 @@ export async function runCapabilityAnalysis(
           prompt_version: "failure-analysis.openai.v1",
           schema_version: "corus.failure_analysis.v1",
           validation_status: "error",
-          metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" }
+          metrics: analysisError instanceof ProviderExecutionError && analysisError.metadata?.metrics ? analysisError.metadata.metrics : { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" },
+          model_operation: analysisError instanceof ProviderExecutionError ? analysisError.metadata?.model_operation : undefined
         })
       );
       await writeGenerationRecords(outputDir, records);
@@ -408,7 +413,8 @@ export async function runCapabilityAnalysis(
         prompt_version: failureAnalysisResult.prompt_version,
         schema_version: "corus.failure_analysis.v1",
         validation_status: failureAnalysis.status,
-        metrics: failureAnalysisResult.metrics
+        metrics: failureAnalysisResult.metrics,
+        model_operation: failureAnalysisResult.model_operation
       })
     );
 
@@ -463,7 +469,8 @@ export async function runCapabilityAnalysis(
           prompt_version: "reduce.anthropic.recovery.v1",
           schema_version: "corus.capabilities.v1",
           validation_status: "schema_invalid_attempt_2",
-          metrics: { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" }
+          metrics: retryError.metadata?.metrics ?? { input_tokens: null, output_tokens: null, estimated_cost_usd: null, latency_ms: null, measurement_source: "unavailable" },
+          model_operation: retryError.metadata?.model_operation
         })
       );
       await writeGenerationRecords(outputDir, records);
@@ -500,7 +507,8 @@ export async function runCapabilityAnalysis(
       prompt_version: reductionResult.prompt_version,
       schema_version: "corus.capabilities.v1",
       validation_status: handoffFailure ? "schema_valid_attempt_2" : "unvalidated",
-      metrics: reductionResult.metrics
+      metrics: reductionResult.metrics,
+      model_operation: reductionResult.model_operation
     })
   );
 
@@ -538,7 +546,8 @@ export async function runCapabilityAnalysis(
       prompt_version: validationResult.prompt_version,
       schema_version: "corus.validation.v1",
       validation_status: validation.status,
-      metrics: validationResult.metrics
+      metrics: validationResult.metrics,
+      model_operation: validationResult.model_operation
     })
   );
 
@@ -578,7 +587,8 @@ export async function runCapabilityAnalysis(
         prompt_version: revisedReduction.prompt_version,
         schema_version: "corus.capabilities.v1",
         validation_status: "revised",
-        metrics: revisedReduction.metrics
+        metrics: revisedReduction.metrics,
+        model_operation: revisedReduction.model_operation
       })
     );
 
@@ -616,7 +626,8 @@ export async function runCapabilityAnalysis(
         prompt_version: validationResult.prompt_version,
         schema_version: "corus.validation.v1",
         validation_status: validation.status,
-        metrics: validationResult.metrics
+        metrics: validationResult.metrics,
+        model_operation: validationResult.model_operation
       })
     );
   }

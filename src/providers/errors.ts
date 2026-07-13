@@ -30,6 +30,7 @@ export class ProviderExecutionError extends Error {
       provider_completion_state?: string | null;
       started_at?: string;
       completed_at?: string;
+      model_operation?: unknown;
     }
   ) {
     super(message);

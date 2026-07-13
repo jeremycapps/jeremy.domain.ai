@@ -1,4 +1,7 @@
 import type { EvidenceReport, GenerateResumeRequest, SelectedContext } from "../types.js";
+import { defaultDirectivePacket, executeModelOperation, type PromptPayload } from "../providers/modelOperation.js";
+import { modelProfile } from "../providers/modelProfiles.js";
+import { textFromOpenAIResponse } from "../providers/providerUtils.js";
 
 export class GenerationError extends Error {
   constructor(message: string) {
@@ -75,29 +78,22 @@ export async function generateResumeMarkdown(
     return { resumeMarkdown: context.artifact?.content ?? "", evidenceReport };
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
+  if (!process.env.OPENAI_API_KEY) {
     throw new GenerationError("OPENAI_API_KEY is required for generate mode. Use options.mode=route_only to test routing without a model.");
   }
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
-      input: buildPrompt(request.job_description, context)
-    })
-  });
-
-  if (!response.ok) {
-    throw new GenerationError(`Model call failed with HTTP ${response.status}.`);
+  const payload: PromptPayload = {
+    operation: "resume_generation",
+    instructions: [buildPrompt(request.job_description, context)],
+    input: {},
+    promptVersion: "resume.generate.openai.v1",
+    schemaVersion: "markdown"
+  };
+  const result = await executeModelOperation({ profile: modelProfile("openai-resume-generator"), payload, directive: defaultDirectivePacket, mode: "execute" });
+  if (result.admission_status === "withheld" || result.provider_error_classification) {
+    throw new GenerationError(`Model call failed: ${result.provider_error_classification ?? result.completion_state}.`);
   }
-
-  const data = (await response.json()) as { output_text?: string };
-  const resumeMarkdown = data.output_text?.trim();
+  const resumeMarkdown = textFromOpenAIResponse(result.raw_output).trim();
 
   if (!resumeMarkdown) {
     throw new GenerationError("Model response did not include resume markdown.");

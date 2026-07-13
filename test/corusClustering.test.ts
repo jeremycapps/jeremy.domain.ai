@@ -132,7 +132,10 @@ test("live Gemini clustering request contains only job description, policy, and 
   const proposal = validProposal(target);
   proposal.generated_by.model = "mock-live-gemini";
   let requestBody = "";
-  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+  globalThis.fetch = (async (inputUrl: string | URL | Request, init?: RequestInit) => {
+    if (String(inputUrl).includes(":countTokens")) {
+      return { ok: true, json: async () => ({ totalTokens: 10 }) } as Response;
+    }
     requestBody = String(init?.body ?? "");
     return {
       ok: true,
@@ -339,7 +342,10 @@ test("live Gemini repair request contains only job-description repair materials 
   proposal.generated_by.model = "model-authored-wrong";
   proposal.generated_by.prompt_version = "cluster-job-requirements.gemini.v1";
   let requestBody = "";
-  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+  globalThis.fetch = (async (inputUrl: string | URL | Request, init?: RequestInit) => {
+    if (String(inputUrl).includes(":countTokens")) {
+      return { ok: true, json: async () => ({ totalTokens: 11 }) } as Response;
+    }
     requestBody = String(init?.body ?? "");
     return {
       ok: true,
