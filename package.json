@@ -17,7 +17,8 @@
     "mock:prophet:clustering": "tsx scripts/runMockProphetClustering.ts",
     "live:gemini:prophet:clustering": "tsx scripts/runLiveGeminiJobRequirementClustering.ts",
     "live:gemini:prophet:cluster-repair": "tsx scripts/runLiveGeminiJobRequirementClusterRepair.ts",
-    "inventory:prophet:applicant-evidence": "tsx scripts/runApplicantEvidenceInventory.ts"
+    "inventory:prophet:applicant-evidence": "tsx scripts/runApplicantEvidenceInventory.ts",
+    "resolve:prophet:direct-evidence": "tsx scripts/runDirectEvidenceResolution.ts"
   },
   "dependencies": {
     "yaml": "^2.5.1"
