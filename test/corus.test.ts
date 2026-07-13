@@ -4,7 +4,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { stringify } from "yaml";
+import { parse, stringify } from "yaml";
 import type {
   AgentProvider,
   CapabilityReduction,
@@ -84,6 +84,14 @@ class SequenceValidationProvider implements AgentProvider<ValidateCapabilitiesIn
     const output = this.validations[Math.min(this.calls, this.validations.length - 1)];
     this.calls += 1;
     return providerResult(output, "openai", "mock-openai-validator", "validate.sequence.v1");
+  }
+}
+
+class RecordingContextualizationProvider extends MockContextualizationProvider {
+  public calls: ContextualizeInput[] = [];
+  async execute(input: ContextualizeInput): Promise<ProviderResult<Context>> {
+    this.calls.push(input);
+    return super.execute(input);
   }
 }
 
@@ -353,6 +361,73 @@ test("both subject and target load through the same Context shape", async () => 
   assert.equal(run.contexts.target.kind, "target");
   assert.ok("content" in run.contexts.subject);
   assert.ok("content" in run.contexts.target);
+});
+
+test("structured target context ledger bypasses Gemini-style contextualization and preserves full scope", async () => {
+  const root = await tempRoot();
+  const targetFixture = path.join(process.cwd(), "test", "fixtures", "prophet", "prophet_senior_product_manager.yaml");
+  const contextualizer = new RecordingContextualizationProvider();
+  const run = await runCapabilityAnalysis(
+    { subject_source: source("subject"), target_source: targetFixture, mode: "mocked" },
+    {
+      root,
+      providers: {
+        contextualizer,
+        reducer: new MockCapabilityReductionProvider(),
+        failureAnalyzer: new MockFailureAnalysisProvider(),
+        validator: new MockValidationProvider()
+      }
+    }
+  );
+
+  const targetContexts = run.contexts.target.content.contexts as Array<{ id: string }>;
+  const targetIds = targetContexts.map((entry) => entry.id);
+  assert.equal(contextualizer.calls.length, 1);
+  assert.equal(contextualizer.calls[0].position, "subject");
+  assert.equal(targetIds.length, 34);
+  assert.ok(targetIds.includes("prophet_ai_evaluation_protocols"));
+  assert.ok(targetIds.includes("prophet_agent_lifecycle_management"));
+  assert.ok(targetIds.includes("prophet_enterprise_data_governance"));
+  assert.ok(targetIds.includes("prophet_qualifying_tradeoff_question"));
+  assert.notDeepEqual(targetIds, ["prophet_maia_product_execution"]);
+  assert.equal(run.contexts.target.generation.provider, "fixture");
+  assert.equal(run.contexts.target.generation.model, "structured-context-ledger");
+  assert.equal(run.contexts.target.generation.source_context_count, 34);
+  assert.equal(run.contexts.target.generation.output_context_count, 34);
+
+  const targetRecord = run.generation_records.find((record) => record.type === "contextualization" && record.input_refs.includes(targetFixture));
+  assert.equal(targetRecord?.provider, "fixture");
+  assert.equal(targetRecord?.raw_output_ref, undefined);
+  await assert.rejects(fs.access(path.join(root, run.artifact_dir, "raw-01-target-context-provider.json")));
+
+  const targetArtifact = parse(await fs.readFile(path.join(root, run.artifact_dir, "01-target-context.yaml"), "utf8")) as {
+    context: { content: { contexts: Array<{ id: string }> } };
+  };
+  assert.equal(targetArtifact.context.content.contexts.length, 34);
+});
+
+test("raw unstructured target input still uses the contextualization provider", async () => {
+  const root = await tempRoot();
+  const contextualizer = new RecordingContextualizationProvider();
+  await runCapabilityAnalysis(
+    {
+      subject_source: source("subject"),
+      target_source: { id: "raw_target", description: "A raw unstructured job description that needs contextualization." },
+      mode: "mocked"
+    },
+    {
+      root,
+      providers: {
+        contextualizer,
+        reducer: new MockCapabilityReductionProvider(),
+        failureAnalyzer: new MockFailureAnalysisProvider(),
+        validator: new MockValidationProvider()
+      }
+    }
+  );
+
+  assert.equal(contextualizer.calls.length, 2);
+  assert.equal(contextualizer.calls[1].position, "target");
 });
 
 test("the capabilities reducer receives both named context positions", async () => {

@@ -15,7 +15,7 @@ import type {
   ReduceCapabilitiesInput,
   ValidateCapabilitiesInput
 } from "../types.js";
-import { readSourceInput, sourceRefFromInput } from "./corusContext.js";
+import { isStructuredContextLedger, normalizeContext, readSourceInput, sourceRefFromInput } from "./corusContext.js";
 import {
   artifactRef,
   createRunDirectory,
@@ -37,6 +37,8 @@ import {
   providerReadiness
 } from "../providers/liveProviders.js";
 import { ProviderConfigurationError, ProviderExecutionError } from "../providers/errors.js";
+import { emptyMetrics } from "../providers/providerUtils.js";
+import { validateContextOutput } from "../providers/validators.js";
 
 export interface CapabilityProviders {
   contextualizer: AgentProvider<ContextualizeInput, Context>;
@@ -112,6 +114,26 @@ async function checkpointRecord(
 ) {
   records.push(record);
   await writeGenerationRecords(outputDir, records);
+}
+
+function preserveStructuredContextLedger(input: ContextualizeInput): ProviderResult<Context> | undefined {
+  if (!isStructuredContextLedger(input.source)) return undefined;
+  const startedAt = Date.now();
+  const output = validateContextOutput(normalizeContext(input.source, input.kind, input.position, input.input_ref), "fixture");
+  output.generation.provider = "fixture";
+  output.generation.model = "structured-context-ledger";
+  output.generation.prompt_version = "contextualize.preserve-ledger.v1";
+  return {
+    output,
+    provider: "fixture",
+    model: "structured-context-ledger",
+    prompt_version: "contextualize.preserve-ledger.v1",
+    metrics: emptyMetrics(startedAt)
+  };
+}
+
+async function contextualizeSource(input: ContextualizeInput, contextualizer: AgentProvider<ContextualizeInput, Context>): Promise<ProviderResult<Context>> {
+  return preserveStructuredContextLedger(input) ?? contextualizer.execute(input);
 }
 
 export function providersForMode(mode: CorusExecutionMode): CapabilityProviders {
@@ -220,12 +242,15 @@ export async function runCapabilityAnalysis(
   const targetSource = await readSourceInput(request.target_source, root);
 
   const subjectResult = await executeProviderStage(outputDir, "raw-01-subject-context-provider-error.json", () =>
-    providers.contextualizer.execute({
-      source: subjectSource,
-      kind: "subject",
-      position: "subject",
-      input_ref: subjectRef
-    })
+    contextualizeSource(
+      {
+        source: subjectSource,
+        kind: "subject",
+        position: "subject",
+        input_ref: subjectRef
+      },
+      providers.contextualizer
+    )
   );
   const subjectArtifact = await writeYamlArtifact(outputDir, "01-subject-context.yaml", { context: subjectResult.output });
   const subjectRawArtifact = subjectResult.raw_output
@@ -249,12 +274,15 @@ export async function runCapabilityAnalysis(
   );
 
   const targetResult = await executeProviderStage(outputDir, "raw-01-target-context-provider-error.json", () =>
-    providers.contextualizer.execute({
-      source: targetSource,
-      kind: "target",
-      position: "target",
-      input_ref: targetRef
-    })
+    contextualizeSource(
+      {
+        source: targetSource,
+        kind: "target",
+        position: "target",
+        input_ref: targetRef
+      },
+      providers.contextualizer
+    )
   );
   const targetArtifact = await writeYamlArtifact(outputDir, "01-target-context.yaml", { context: targetResult.output });
   const targetRawArtifact = targetResult.raw_output

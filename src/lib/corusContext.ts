@@ -3,6 +3,26 @@ import path from "node:path";
 import { parse } from "yaml";
 import type { Context, ContextPosition } from "../types.js";
 
+export function structuredContextLedgerContextIds(source: unknown): string[] {
+  if (!source || typeof source !== "object") return [];
+  const record = source as Record<string, unknown>;
+  const meta = record.meta && typeof record.meta === "object" ? (record.meta as Record<string, unknown>) : {};
+  if (meta.file_type !== "corus_context_ledger") return [];
+  const contexts = record.contexts;
+  if (!Array.isArray(contexts)) return [];
+  const ids: string[] = [];
+  for (const context of contexts) {
+    if (context && typeof context === "object" && typeof (context as { id?: unknown }).id === "string") {
+      ids.push((context as { id: string }).id);
+    }
+  }
+  return ids;
+}
+
+export function isStructuredContextLedger(source: unknown): boolean {
+  return structuredContextLedgerContextIds(source).length > 0;
+}
+
 export function sourceRefFromInput(source: unknown, fallback: string): string {
   if (typeof source === "string") return source;
   if (source && typeof source === "object") {
@@ -54,6 +74,7 @@ export function normalizeContext(source: unknown, kind: string, position: Contex
   }
 
   const ledger = source && typeof source === "object" ? (source as Record<string, unknown>) : {};
+  const sourceContextCount = structuredContextLedgerContextIds(ledger).length;
   const meta = ledger.meta && typeof ledger.meta === "object" ? (ledger.meta as Record<string, unknown>) : {};
   const subject = meta.subject && typeof meta.subject === "object" ? (meta.subject as Record<string, unknown>) : {};
   const id = String(subject.id ?? meta.id ?? `${position}_${kind}`);
@@ -72,7 +93,14 @@ export function normalizeContext(source: unknown, kind: string, position: Contex
       prompt_version: "fixture.v1",
       input_refs: [inputRef],
       schema_version: "corus.context.v1",
-      created_at: now
+      created_at: now,
+      ...(sourceContextCount > 0
+        ? {
+            source_context_count: sourceContextCount,
+            output_context_count: sourceContextCount,
+            measurement_source: "local_preservation" as const
+          }
+        : {})
     }
   };
 }

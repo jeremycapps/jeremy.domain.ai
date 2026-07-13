@@ -132,6 +132,9 @@ export interface ContextGenerationMetadata {
   input_refs: string[];
   schema_version: string;
   created_at: string;
+  source_context_count?: number;
+  output_context_count?: number;
+  measurement_source?: "provider" | "local_preservation";
 }
 
 export interface Context {
