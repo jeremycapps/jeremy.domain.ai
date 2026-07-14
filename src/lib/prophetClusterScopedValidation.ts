@@ -305,7 +305,7 @@ export function completedOpenAIClusterValidationIdsFromRecords(records: StageGen
     .filter((id): id is string => Boolean(id));
 }
 
-async function executeOpenAIClusterValidation(packet: ClusterValidationPacket, requestedOutputTokens: number) {
+async function executeOpenAIClusterValidation(packet: ClusterValidationPacket, requestedOutputTokens: number, rawOutputPath?: string) {
   const payload: PromptPayload = {
     operation: "cluster_capability_validation",
     instructions: [
@@ -319,8 +319,9 @@ async function executeOpenAIClusterValidation(packet: ClusterValidationPacket, r
     schemaVersion: "corus.openai_cluster_validation.v1"
   };
   const directive = { ...defaultDirectivePacket, max_output_tokens: requestedOutputTokens, max_requested_tokens: 14000, rate_limit_tokens_per_minute: 50000, safety_margin: 0.1 };
-  const result = await executeModelOperation({ profile: modelProfile(canonicalModelProfileIds.openai), payload, directive, mode: "execute" });
+  const result = await executeModelOperation({ profile: modelProfile(canonicalModelProfileIds.openai), prompt: payload, payload: payload.input, directive, mode: "execute" });
   const raw = result.raw_output;
+  if (rawOutputPath) await fs.writeFile(rawOutputPath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
   const metrics = providerMetricsFromModelOperation(result);
   const metadata = { model: result.model, prompt_version: "validate.openai.cluster.v1", schema_version: "corus.openai_cluster_validation.v1", metrics, provider_completion_state: result.completion_state, model_operation: modelOperationRecord(result) };
   if (result.admission_status === "withheld" || result.provider_error_classification) throw new ProviderExecutionError("openai", `OpenAI cluster validation failed: ${result.provider_error_classification ?? result.completion_state}.`, raw, metadata);
@@ -417,7 +418,7 @@ export async function runClusterScopedOpenAIValidation(input: { root?: string; r
     if (clusterId !== "product_delivery_and_execution" && completedClusters.length === 0) throw new Error("Smoke validation must complete before later clusters.");
     let result;
     try {
-      result = await executeOpenAIClusterValidation(packet, requestedOutputTokens);
+      result = await executeOpenAIClusterValidation(packet, requestedOutputTokens, path.join(runDir, names.raw));
     } catch (error) {
       const classification = classifyOpenAIClusterFailure(error);
       const failure = { schema_version: "corus.openai_cluster_validation_failure.v1", cluster_id: clusterId, provider: error instanceof ProviderExecutionError ? error.provider : undefined, message: error instanceof Error ? error.message : String(error), classification };
@@ -448,7 +449,6 @@ export async function runClusterScopedOpenAIValidation(input: { root?: string; r
       await fs.writeFile(progressPath, stringify({ schema_version: "corus.openai_cluster_validation_progress.v1", pipeline_status: failure.classification === "tpm_429" ? "provider_unavailable" : "cluster_validation_provider_incomplete", failed_cluster_id: clusterId, completed_clusters: completedClusters, failure }));
       throw error;
     }
-    await writeJsonArtifact(runDir, names.raw, result.raw_output);
     const deterministic = validateClusterValidationOutput(result.output, packet);
     await fs.writeFile(path.join(runDir, names.normalized), stringify(result.output), "utf8");
     await fs.writeFile(path.join(runDir, names.deterministic), stringify(deterministic), "utf8");

@@ -109,7 +109,8 @@ test("directive controls token allocation, exact boundary, and safety margin", a
 
   const over = await executeModelOperation({ profile: profile(), payload, directive, mode: "execute", adapterRegistry: { openai: adapter(101) } as any });
   assert.equal(over.admission_status, "withheld");
-  assert.equal(over.provider_error_classification, "input_token_limit_exceeded");
+  assert.equal(over.provider_error_classification, "withheld_context_limit");
+  assert.equal(over.receipt.execution_status, "withheld_context_limit");
 });
 
 test("runtime provenance is returned from profile and adapter usage is normalized", async () => {
@@ -177,6 +178,126 @@ test("one Gemini model profile executes contextualization, clustering, and repai
   assert.equal(fake.schemas[1], operations[1][1]);
 });
 
+test("compatibility aliases resolve to canonical profiles and are observable in the receipt", async () => {
+  const fake = adapter();
+  const result = await executeModelOperation({
+    profile: "openai-cluster-validator",
+    payload,
+    directive,
+    mode: "execute",
+    adapterRegistry: { openai: fake } as any
+  });
+
+  assert.equal(result.profile_id, canonicalModelProfileIds.openai);
+  assert.equal(result.receipt.profile_id, canonicalModelProfileIds.openai);
+  assert.equal(result.receipt.requested_profile_id, "openai-cluster-validator");
+  assert.equal(result.receipt.alias_used, true);
+  assert.equal(result.receipt.alias_profile_id, "openai-cluster-validator");
+  assert.equal(fake.counts.count, 1);
+  assert.equal(fake.counts.execute, 1);
+});
+
+test("token admission distinguishes context, operation budget, and rolling rate withholding", async () => {
+  const context = await executeModelOperation({
+    profile: profile(),
+    payload,
+    directive: { ...directive, max_context_tokens: 9, max_requested_tokens: 1000, rate_limit_tokens_per_minute: 1000 },
+    mode: "execute",
+    adapterRegistry: { openai: adapter(10) } as any
+  });
+  assert.equal(context.receipt.execution_status, "withheld_context_limit");
+
+  const budgetFake = adapter(90);
+  const budget = await executeModelOperation({
+    profile: profile(),
+    payload,
+    directive: { ...directive, max_context_tokens: 1000, max_output_tokens: 20, requested_reasoning_tokens: 15, max_requested_tokens: 100, rate_limit_tokens_per_minute: 1000 },
+    mode: "execute",
+    adapterRegistry: { openai: budgetFake } as any
+  });
+  assert.equal(budget.receipt.execution_status, "withheld_token_budget");
+  assert.equal(budgetFake.counts.execute, 0);
+
+  const rateFake = adapter(50);
+  const rate = await executeModelOperation({
+    profile: profile(),
+    payload,
+    directive: { ...directive, max_context_tokens: 1000, max_output_tokens: 20, max_requested_tokens: 1000, safety_margin: 0.25, rate_limit_tokens_per_minute: 80 },
+    mode: "execute",
+    adapterRegistry: { openai: rateFake } as any
+  });
+  assert.equal(rate.receipt.execution_status, "withheld_rate_budget");
+  assert.equal(rateFake.counts.execute, 0);
+});
+
+test("native count failure can withhold or use an explicit fallback estimate", async () => {
+  const withheldFake = adapter();
+  withheldFake.countTokens = async () => {
+    withheldFake.counts.count += 1;
+    return { status: "unavailable", error: "native endpoint unavailable" };
+  };
+  const withheld = await executeModelOperation({ profile: profile(), payload, directive, mode: "execute", adapterRegistry: { openai: withheldFake } as any });
+  assert.equal(withheld.receipt.execution_status, "withheld_token_budget");
+  assert.equal(withheld.receipt.token_count_source, "unavailable");
+  assert.equal(withheld.receipt.estimated_input_tokens, null);
+  assert.equal(withheldFake.counts.execute, 0);
+
+  const fallbackFake = adapter();
+  fallbackFake.countTokens = async () => {
+    fallbackFake.counts.count += 1;
+    return { status: "unavailable", error: "native endpoint unavailable" };
+  };
+  const fallback = await executeModelOperation({
+    profile: profile(),
+    payload,
+    directive: { ...directive, token_count_failure_policy: "use_fallback_estimate", max_context_tokens: 1000, max_requested_tokens: 1000, rate_limit_tokens_per_minute: 1000 },
+    mode: "execute",
+    adapterRegistry: { openai: fallbackFake } as any
+  });
+  assert.equal(fallback.receipt.token_count_source, "fallback_estimate");
+  assert.equal(typeof fallback.receipt.estimated_input_tokens, "number");
+  assert.equal(fallbackFake.counts.execute, 1);
+});
+
+test("raw output, usage, and artifact refs survive downstream parser or validation failure", async () => {
+  const fake = adapter(12);
+  fake.execute = async () => {
+    fake.counts.execute += 1;
+    return { ok: true, raw: { output_text: "{\"broken\":" }, usage: { input_tokens: 12, output_tokens: 7, output_tokens_details: { reasoning_tokens: 3 } }, completion_state: "completed", error_classification: null };
+  };
+  const result = await executeModelOperation({
+    profile: profile(),
+    payload,
+    directive,
+    mode: "execute",
+    rawArtifactRef: "outputs/run/raw-provider.json",
+    normalizedArtifactRef: "outputs/run/normalized.yaml",
+    adapterRegistry: { openai: fake } as any
+  });
+
+  assert.deepEqual(result.raw_output, { output_text: "{\"broken\":" });
+  assert.equal(result.receipt.raw_artifact_ref, "outputs/run/raw-provider.json");
+  assert.equal(result.receipt.normalized_artifact_ref, "outputs/run/normalized.yaml");
+  assert.equal(result.receipt.actual_input_tokens, 12);
+  assert.equal(result.receipt.output_tokens, 7);
+  assert.equal(result.receipt.reasoning_tokens, 3);
+});
+
+test("reasoning and visible output tokens remain separate and unavailable values stay null", async () => {
+  const fake = adapter(8);
+  fake.execute = async () => {
+    fake.counts.execute += 1;
+    return { ok: true, raw: { output_text: "{}" }, usage: { input_tokens: 8, output_tokens: 4 }, completion_state: "completed", error_classification: null };
+  };
+  const result = await executeModelOperation({ profile: profile(), payload, directive: { ...directive, requested_reasoning_tokens: 6 }, mode: "execute", adapterRegistry: { openai: fake } as any });
+
+  assert.equal(result.receipt.requested_reasoning_allocation, 6);
+  assert.equal(result.receipt.requested_output_allocation, directive.max_output_tokens);
+  assert.equal(result.receipt.reasoning_tokens, null);
+  assert.equal(result.receipt.output_tokens, 4);
+  assert.equal(result.receipt.cost_usd, null);
+});
+
 test("canonical model profiles contain only execution configuration", () => {
   const profiles = modelProfiles();
   const canonical = [profiles[canonicalModelProfileIds.google], profiles[canonicalModelProfileIds.anthropic], profiles[canonicalModelProfileIds.openai]];
@@ -194,5 +315,5 @@ test("canonical model profiles contain only execution configuration", () => {
 
 test("executeModelOperation has no Corus-specific vocabulary or branching", async () => {
   const source = await fs.readFile("src/providers/modelOperation.ts", "utf8");
-  assert.doesNotMatch(source, /Corus|Prophet|applicant|resume|capability|cluster|validation|failure analysis/i);
+  assert.doesNotMatch(source, /Corus|Prophet|applicant|resume_generation|capability_reduction|capability_validation|cluster_capability_validation|job_requirement|failure_analysis/i);
 });

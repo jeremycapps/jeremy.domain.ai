@@ -89,7 +89,7 @@ export async function generateResumeMarkdown(
     promptVersion: "resume.generate.openai.v1",
     schemaVersion: "markdown"
   };
-  const result = await executeModelOperation({ profile: modelProfile(canonicalModelProfileIds.openai), payload, directive: defaultDirectivePacket, mode: "execute" });
+  const result = await executeModelOperation({ profile: modelProfile(canonicalModelProfileIds.openai), prompt: payload, payload: payload.input, directive: defaultDirectivePacket, mode: "execute" });
   if (result.admission_status === "withheld" || result.provider_error_classification) {
     throw new GenerationError(`Model call failed: ${result.provider_error_classification ?? result.completion_state}.`);
   }

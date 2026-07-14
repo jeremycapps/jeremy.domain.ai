@@ -208,7 +208,7 @@ export class GeminiContextualizationProvider implements AgentProvider<Contextual
       promptVersion: this.promptVersion,
       schemaVersion: "corus.context.v1"
     };
-    const result = await executeModelOperation({ profile: this.profile, payload, directive: defaultDirectivePacket, mode: "execute" });
+    const result = await executeModelOperation({ profile: this.profile, prompt: payload, payload: payload.input, directive: defaultDirectivePacket, mode: "execute" });
     const raw = result.raw_output;
     if (result.admission_status === "withheld" || result.provider_error_classification) throw new ProviderExecutionError("google", `Gemini contextualization failed: ${result.provider_error_classification ?? result.completion_state}.`, raw, { model: this.profile.model, prompt_version: this.promptVersion, schema_version: "corus.context.v1", metrics: providerMetricsFromModelOperation(result), provider_completion_state: result.completion_state, model_operation: modelOperationRecord(result) });
     let output;
@@ -242,7 +242,7 @@ export class GeminiJobRequirementClusteringProvider implements AgentProvider<Job
       schemaVersion: "corus.job_requirement_clusters.v1"
     };
     const directive: DirectivePacket = { ...defaultDirectivePacket, structured_output_schema: geminiResponseSchema(input.schema) };
-    const result = await executeModelOperation({ profile: this.profile, payload, directive, mode: "execute" });
+    const result = await executeModelOperation({ profile: this.profile, prompt: payload, payload: payload.input, directive, mode: "execute" });
     const raw = result.raw_output;
     const metrics = providerMetricsFromModelOperation(result);
     const stopReason = finishReasonFromGeminiResponse(raw);
@@ -290,7 +290,7 @@ export class GeminiJobRequirementClusterRepairProvider implements AgentProvider<
       schemaVersion: "corus.job_requirement_clusters.v1"
     };
     const directive: DirectivePacket = { ...defaultDirectivePacket, structured_output_schema: geminiResponseSchema(input.schema) };
-    const result = await executeModelOperation({ profile: this.profile, payload, directive, mode: "execute" });
+    const result = await executeModelOperation({ profile: this.profile, prompt: payload, payload: payload.input, directive, mode: "execute" });
     const raw = result.raw_output;
     const metrics = providerMetricsFromModelOperation(result);
     const stopReason = finishReasonFromGeminiResponse(raw);
@@ -351,7 +351,7 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
         ].join("\n");
     const directive: DirectivePacket = { ...defaultDirectivePacket, max_output_tokens: this.maxTokens, max_requested_tokens: defaultDirectivePacket.max_input_tokens + this.maxTokens, structured_output_schema: capabilityReductionJsonSchema(), reasoning_config: { type: "disabled" } };
     const payload: PromptPayload = { operation: "capability_reduction", instructions: [content], input: {}, promptVersion, schemaVersion: "corus.capability_reduction.v1" };
-    const result = await executeModelOperation({ profile: this.profile, payload, directive, mode: "execute" });
+    const result = await executeModelOperation({ profile: this.profile, prompt: payload, payload: payload.input, directive, mode: "execute" });
     const raw = result.raw_output;
     const metrics = providerMetricsFromModelOperation(result);
     const stopReason = raw && typeof raw === "object" && typeof (raw as { stop_reason?: unknown }).stop_reason === "string" ? (raw as { stop_reason: string }).stop_reason : null;
@@ -385,7 +385,7 @@ export class OpenAIValidationProvider implements AgentProvider<ValidateCapabilit
 
   async execute(input: ValidateCapabilitiesInput): Promise<ProviderResult<CapabilityValidation>> {
     const payload: PromptPayload = { operation: "capability_validation", instructions: ["Validate Corus capability candidates against subject and target contexts.", "Return JSON only: {status, findings, validated_capability_ids, rejected_capability_ids}.", "Unsupported claims cannot pass. Schema/product ambiguity must be architect_required."], input, promptVersion: this.promptVersion, schemaVersion: "corus.validation.v1" };
-    const result = await executeModelOperation({ profile: this.profile, payload, directive: defaultDirectivePacket, mode: "execute" });
+    const result = await executeModelOperation({ profile: this.profile, prompt: payload, payload: payload.input, directive: defaultDirectivePacket, mode: "execute" });
     const raw = result.raw_output;
     if (result.admission_status === "withheld" || result.provider_error_classification) throw new ProviderExecutionError("openai", `OpenAI validation failed: ${result.provider_error_classification ?? result.completion_state}.`, raw, { model: this.profile.model, prompt_version: this.promptVersion, schema_version: "corus.validation.v1", metrics: providerMetricsFromModelOperation(result), provider_completion_state: result.completion_state, model_operation: modelOperationRecord(result) });
     let output;
@@ -410,7 +410,7 @@ export class OpenAIFailureAnalysisProvider implements AgentProvider<FailureAnaly
 
   async execute(input: FailureAnalysisInput): Promise<ProviderResult<FailureAnalysis>> {
     const payload: PromptPayload = { operation: "failure_analysis", instructions: ["Analyze a malformed Corus inter-agent handoff.", "Do not redesign schemas. Do not browse. Do not change product meaning.", "Classify as correctable only when the correction preserves the existing schema and reducer semantics.", "Return JSON only matching {status, failed_stage, failure_type, diagnosis, corrections, retry_stage, architecture_change_required, confidence}."], input, promptVersion: this.promptVersion, schemaVersion: "corus.failure_analysis.v1" };
-    const result = await executeModelOperation({ profile: this.profile, payload, directive: defaultDirectivePacket, mode: "execute" });
+    const result = await executeModelOperation({ profile: this.profile, prompt: payload, payload: payload.input, directive: defaultDirectivePacket, mode: "execute" });
     const raw = result.raw_output;
     if (result.admission_status === "withheld" || result.provider_error_classification) throw new ProviderExecutionError("openai", `OpenAI failure analysis failed: ${result.provider_error_classification ?? result.completion_state}.`, raw, { model: this.profile.model, prompt_version: this.promptVersion, schema_version: "corus.failure_analysis.v1", metrics: providerMetricsFromModelOperation(result), provider_completion_state: result.completion_state, model_operation: modelOperationRecord(result) });
     let output;

@@ -53,6 +53,28 @@ Operation meaning now lives in prompt/directive composition. Capability validati
 cluster validation, failure analysis, resume generation, clustering, repair, and
 contextualization no longer require operation-specific model profiles.
 
+## Execution Boundary Completion Audit
+
+`executeModelOperation` now accepts the provider-neutral shape:
+
+- `profile`: canonical `ModelProfile` or profile ID string.
+- `prompt`: prompt instructions, prompt version, schema version, and operation label.
+- `payload`: operation data supplied by the pipeline.
+- `directive`: token, reasoning, structured-output, retry, and execution policy.
+
+The executor returns a normalized `value` plus a `ModelExecutionReceipt`. Existing
+flat fields remain temporarily for compatibility with current pipeline code.
+
+Receipt fields include profile resolution, alias usage, token-count source,
+separate reasoning and visible output tokens, context/token/rate admission
+status, stop reason, raw/normalized artifact refs, and error classification.
+
+Compatibility alias call-site inventory:
+
+- No production caller currently requests an operation-named alias.
+- Compatibility aliases remain in `modelProfiles()` for external callers and old checkpoints.
+- `test/modelOperation.test.ts` intentionally calls `openai-cluster-validator` to prove aliases resolve to canonical profiles and are observable in receipts.
+
 ## Execution Endpoints
 
 - OpenAI Responses execution: `ModelProfile.endpoints.execute = /v1/responses`
@@ -100,6 +122,11 @@ Remaining direct provider calls:
 
 - `checkConfiguredModels()` model-list readiness checks for Gemini, Anthropic, and OpenAI.
 - GitHub repository evidence resolution uses repository access, not a model provider.
+
+Direct generation and token-count endpoints:
+
+- All direct model generation and token-count endpoint calls are contained in provider wrappers inside `src/providers/modelOperation.ts`.
+- No pipeline stage calls Gemini, Anthropic, or OpenAI generation endpoints directly.
 
 ## Duplicated Handling Removed Or Centralized
 

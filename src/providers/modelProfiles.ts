@@ -93,8 +93,29 @@ export function modelProfiles(): Record<string, ModelProfile> {
   };
 }
 
+export interface ResolvedModelProfile {
+  profile: ModelProfile;
+  requested_profile_id: string;
+  alias_used: boolean;
+  alias_profile_id: string | null;
+}
+
+export function resolveModelProfile(profileOrId: ModelProfile | string): ResolvedModelProfile {
+  const requested = typeof profileOrId === "string" ? profileOrId : profileOrId.id;
+  const profiles = modelProfiles();
+  const selected = typeof profileOrId === "string" ? profiles[process.env.MODEL_PROFILE_ID ?? profileOrId] ?? profiles[profileOrId] : profileOrId;
+  if (!selected) throw new Error(`Unknown model profile: ${requested}`);
+  const targetId = typeof selected.metadata?.resolves_to_profile_id === "string" ? selected.metadata.resolves_to_profile_id : selected.id;
+  const target = profiles[targetId] ?? selected;
+  if (!target) throw new Error(`Unknown resolved model profile: ${targetId}`);
+  return {
+    profile: target,
+    requested_profile_id: requested,
+    alias_used: selected.id !== target.id || selected.metadata?.compatibility_alias === true,
+    alias_profile_id: selected.id !== target.id || selected.metadata?.compatibility_alias === true ? selected.id : null
+  };
+}
+
 export function modelProfile(id: string): ModelProfile {
-  const profile = modelProfiles()[process.env.MODEL_PROFILE_ID ?? id] ?? modelProfiles()[id];
-  if (!profile) throw new Error(`Unknown model profile: ${id}`);
-  return profile;
+  return resolveModelProfile(id).profile;
 }
