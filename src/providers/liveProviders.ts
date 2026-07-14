@@ -20,7 +20,7 @@ import { normalizeContext } from "../lib/corusContext.js";
 import { ProviderConfigurationError, ProviderExecutionError } from "./errors.js";
 import { parseJsonObject, textFromOpenAIResponse } from "./providerUtils.js";
 import { defaultDirectivePacket, executeModelOperation, modelOperationRecord, providerMetricsFromModelOperation, type DirectivePacket, type PromptPayload } from "./modelOperation.js";
-import { configuredModelIds, modelProfile } from "./modelProfiles.js";
+import { canonicalModelProfileIds, configuredModelIds, modelProfile } from "./modelProfiles.js";
 import {
   validateCapabilityValidationOutput,
   validateContextOutput,
@@ -191,7 +191,7 @@ export async function checkConfiguredModels(): Promise<ProviderModelAvailability
 }
 
 export class GeminiContextualizationProvider implements AgentProvider<ContextualizeInput, Context> {
-  private readonly profile = modelProfile("google-contextualizer");
+  private readonly profile = modelProfile(canonicalModelProfileIds.google);
   private readonly promptVersion = "contextualize.gemini.v1";
 
   async execute(input: ContextualizeInput): Promise<ProviderResult<Context>> {
@@ -226,7 +226,7 @@ export class GeminiContextualizationProvider implements AgentProvider<Contextual
 }
 
 export class GeminiJobRequirementClusteringProvider implements AgentProvider<JobRequirementClusteringInput, JobRequirementClusters> {
-  private readonly profile = modelProfile("google-job-requirement-clusterer");
+  private readonly profile = modelProfile(canonicalModelProfileIds.google);
   private readonly promptVersion = "cluster-job-requirements.gemini.v1";
 
   async execute(input: JobRequirementClusteringInput): Promise<ProviderResult<JobRequirementClusters>> {
@@ -238,11 +238,11 @@ export class GeminiJobRequirementClusteringProvider implements AgentProvider<Job
         "Return only one JSON object matching corus.job_requirement_clusters.v1."
       ],
       input: { job_description_ref: input.job_description_ref, job_description: input.job_description, clustering_policy: input.policy, output_schema: input.schema },
-      outputSchema: geminiResponseSchema(input.schema),
       promptVersion: this.promptVersion,
       schemaVersion: "corus.job_requirement_clusters.v1"
     };
-    const result = await executeModelOperation({ profile: this.profile, payload, directive: defaultDirectivePacket, mode: "execute" });
+    const directive: DirectivePacket = { ...defaultDirectivePacket, structured_output_schema: geminiResponseSchema(input.schema) };
+    const result = await executeModelOperation({ profile: this.profile, payload, directive, mode: "execute" });
     const raw = result.raw_output;
     const metrics = providerMetricsFromModelOperation(result);
     const stopReason = finishReasonFromGeminiResponse(raw);
@@ -272,7 +272,7 @@ export class GeminiJobRequirementClusteringProvider implements AgentProvider<Job
 }
 
 export class GeminiJobRequirementClusterRepairProvider implements AgentProvider<JobRequirementClusterRepairInput, JobRequirementClusters> {
-  private readonly profile = modelProfile("google-job-requirement-cluster-repairer");
+  private readonly profile = modelProfile(canonicalModelProfileIds.google);
   private readonly promptVersion = "cluster-job-requirements.gemini.repair.v1";
 
   async execute(input: JobRequirementClusterRepairInput): Promise<ProviderResult<JobRequirementClusters>> {
@@ -286,11 +286,11 @@ export class GeminiJobRequirementClusterRepairProvider implements AgentProvider<
         "All 34 original requirement IDs must appear. A requirement may appear in more than one cluster only when the overlap is explicitly reported. Unassigned requirements must appear in unassigned_requirement_refs. Unknown requirement IDs are prohibited. Original requirement text and IDs must not be altered. Return the complete artifact, not only the three repairs."
       ],
       input: { original_job_description: { requirement_count: input.integrity_result.checks.original_requirement_count, complete_preserved_ledger: true, ref: input.job_description_ref, context: input.job_description }, clustering_policy: input.policy, previous_proposal: { ref: input.previous_proposal_ref, proposal: input.previous_proposal }, integrity_result: { ref: input.integrity_result_ref, result: input.integrity_result }, missing_requirement_refs: input.missing_requirement_refs, output_schema: input.schema },
-      outputSchema: geminiResponseSchema(input.schema),
       promptVersion: this.promptVersion,
       schemaVersion: "corus.job_requirement_clusters.v1"
     };
-    const result = await executeModelOperation({ profile: this.profile, payload, directive: defaultDirectivePacket, mode: "execute" });
+    const directive: DirectivePacket = { ...defaultDirectivePacket, structured_output_schema: geminiResponseSchema(input.schema) };
+    const result = await executeModelOperation({ profile: this.profile, payload, directive, mode: "execute" });
     const raw = result.raw_output;
     const metrics = providerMetricsFromModelOperation(result);
     const stopReason = finishReasonFromGeminiResponse(raw);
@@ -320,7 +320,7 @@ export class GeminiJobRequirementClusterRepairProvider implements AgentProvider<
 }
 
 export class AnthropicCapabilityReductionProvider implements AgentProvider<ReduceCapabilitiesInput, CapabilityReduction> {
-  private readonly profile = modelProfile("anthropic-capability-reducer");
+  private readonly profile = modelProfile(canonicalModelProfileIds.anthropic);
   private readonly maxTokens = Number(process.env.ANTHROPIC_CAPABILITY_REDUCTION_MAX_TOKENS ?? "4000");
 
   async execute(input: ReduceCapabilitiesInput): Promise<ProviderResult<CapabilityReduction>> {
@@ -349,8 +349,8 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
           "Do not validate your own claims.",
           JSON.stringify(input)
         ].join("\n");
-    const directive: DirectivePacket = { ...defaultDirectivePacket, max_output_tokens: this.maxTokens, max_requested_tokens: defaultDirectivePacket.max_input_tokens + this.maxTokens };
-    const payload: PromptPayload = { operation: "capability_reduction", instructions: [content], input: {}, outputSchema: capabilityReductionJsonSchema(), promptVersion, schemaVersion: "corus.capability_reduction.v1", metadata: { thinking: { type: "disabled" } } };
+    const directive: DirectivePacket = { ...defaultDirectivePacket, max_output_tokens: this.maxTokens, max_requested_tokens: defaultDirectivePacket.max_input_tokens + this.maxTokens, structured_output_schema: capabilityReductionJsonSchema(), reasoning_config: { type: "disabled" } };
+    const payload: PromptPayload = { operation: "capability_reduction", instructions: [content], input: {}, promptVersion, schemaVersion: "corus.capability_reduction.v1" };
     const result = await executeModelOperation({ profile: this.profile, payload, directive, mode: "execute" });
     const raw = result.raw_output;
     const metrics = providerMetricsFromModelOperation(result);
@@ -380,7 +380,7 @@ export class AnthropicCapabilityReductionProvider implements AgentProvider<Reduc
 }
 
 export class OpenAIValidationProvider implements AgentProvider<ValidateCapabilitiesInput, CapabilityValidation> {
-  private readonly profile = modelProfile("openai-capability-validator");
+  private readonly profile = modelProfile(canonicalModelProfileIds.openai);
   private readonly promptVersion = "validate.openai.v1";
 
   async execute(input: ValidateCapabilitiesInput): Promise<ProviderResult<CapabilityValidation>> {
@@ -405,7 +405,7 @@ export class OpenAIValidationProvider implements AgentProvider<ValidateCapabilit
 }
 
 export class OpenAIFailureAnalysisProvider implements AgentProvider<FailureAnalysisInput, FailureAnalysis> {
-  private readonly profile = modelProfile("openai-failure-analyzer");
+  private readonly profile = modelProfile(canonicalModelProfileIds.openai);
   private readonly promptVersion = "failure-analysis.openai.v1";
 
   async execute(input: FailureAnalysisInput): Promise<ProviderResult<FailureAnalysis>> {

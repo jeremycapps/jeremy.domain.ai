@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { promises as fs } from "node:fs";
 import test from "node:test";
 import { executeModelOperation, type DirectivePacket, type ProviderAdapter, type PromptPayload } from "../src/providers/modelOperation.js";
-import type { ModelProfile } from "../src/providers/modelProfiles.js";
+import { canonicalModelProfileIds, modelProfiles, type ModelProfile } from "../src/providers/modelProfiles.js";
 
 const profile = (provider: "openai" | "anthropic" | "google" = "openai"): ModelProfile => ({
   id: `${provider}-test-profile`,
@@ -30,15 +31,22 @@ const directive: DirectivePacket = {
   max_requested_tokens: 120,
   rate_limit_tokens_per_minute: 200,
   safety_margin: 0.1,
-  if_over_budget: "withhold"
+  if_over_budget: "withhold",
+  structured_output_schema: { type: "object" },
+  reasoning_config: { type: "disabled" },
+  bounded_retry_policy: { max_attempts: 1, retry_on: [] }
 };
 
-function adapter(inputTokens = 10): ProviderAdapter & { counts: { count: number; execute: number }; lastRequest?: Record<string, unknown> } {
+function adapter(inputTokens = 10): ProviderAdapter & { counts: { count: number; execute: number }; lastRequest?: Record<string, unknown>; operations: string[]; schemas: unknown[] } {
   return {
     provider: "openai",
     counts: { count: 0, execute: 0 },
+    operations: [],
+    schemas: [],
     serialize(profileArg, payloadArg, directiveArg) {
-      this.lastRequest = { model: profileArg.model, payload: payloadArg, max_output_tokens: directiveArg.max_output_tokens };
+      this.operations.push(payloadArg.operation);
+      this.schemas.push(directiveArg.structured_output_schema ?? null);
+      this.lastRequest = { model: profileArg.model, payload: payloadArg, max_output_tokens: directiveArg.max_output_tokens, directive: directiveArg };
       return { url: "/execute", init: { method: "POST" }, body: this.lastRequest };
     },
     async countTokens() {
@@ -69,6 +77,7 @@ test("profile selects provider/model/endpoints while payload stays semantic", as
   assert.equal(fake.lastRequest?.model, "openai-model");
   assert.equal((fake.lastRequest?.payload as PromptPayload).operation, "test_operation");
   assert.equal(JSON.stringify(fake.lastRequest?.payload).includes("OPENAI_API_KEY"), false);
+  assert.deepEqual((fake.lastRequest?.directive as DirectivePacket).structured_output_schema, { type: "object" });
 });
 
 test("native token counting happens before execution and preflight never executes", async () => {
@@ -112,4 +121,78 @@ test("runtime provenance is returned from profile and adapter usage is normalize
   assert.equal(result.actual_output_tokens, 5);
   assert.equal(result.reasoning_tokens, 2);
   assert.deepEqual(result.raw_output, { output_text: "{}" });
+});
+
+test("one OpenAI model profile executes validation, cluster validation, failure analysis, and resume operations", async () => {
+  const fake = adapter();
+  const registry = { openai: fake } as any;
+  const profile = modelProfiles()[canonicalModelProfileIds.openai];
+  const operations = [
+    ["capability_validation", { type: "object", required: ["status"] }, 1000],
+    ["cluster_capability_validation", { type: "object", required: ["cluster_id"] }, 800],
+    ["failure_analysis", { type: "object", required: ["failure_type"] }, 600],
+    ["resume_generation", null, 1200]
+  ] as const;
+
+  for (const [operation, schema, maxOutput] of operations) {
+    await executeModelOperation({
+      profile,
+      payload: { operation, instructions: [`Run ${operation}.`], input: { id: operation }, promptVersion: `${operation}.v1`, schemaVersion: "schema.v1" },
+      directive: { ...directive, max_output_tokens: maxOutput, max_requested_tokens: 5000, rate_limit_tokens_per_minute: 5000, structured_output_schema: schema },
+      mode: "execute",
+      adapterRegistry: registry
+    });
+  }
+
+  assert.equal(new Set(fake.operations).size, 4);
+  assert.deepEqual(fake.operations, operations.map(([operation]) => operation));
+  assert.equal(fake.counts.execute, 4);
+  assert.equal(fake.schemas[0], operations[0][1]);
+  assert.equal(fake.schemas[3], null);
+});
+
+test("one Gemini model profile executes contextualization, clustering, and repair operations", async () => {
+  const fake = adapter();
+  fake.provider = "google";
+  const registry = { google: fake } as any;
+  const profile = modelProfiles()[canonicalModelProfileIds.google];
+  const operations = [
+    ["contextualize", null],
+    ["job_requirement_clustering", { type: "object", required: ["clusters"] }],
+    ["job_requirement_cluster_repair", { type: "object", required: ["clusters"] }]
+  ] as const;
+
+  for (const [operation, schema] of operations) {
+    await executeModelOperation({
+      profile,
+      payload: { operation, instructions: [`Run ${operation}.`], input: { id: operation }, promptVersion: `${operation}.v1`, schemaVersion: "schema.v1" },
+      directive: { ...directive, structured_output_schema: schema },
+      mode: "execute",
+      adapterRegistry: registry
+    });
+  }
+
+  assert.deepEqual(fake.operations, operations.map(([operation]) => operation));
+  assert.equal(fake.counts.execute, 3);
+  assert.equal(fake.schemas[1], operations[1][1]);
+});
+
+test("canonical model profiles contain only execution configuration", () => {
+  const profiles = modelProfiles();
+  const canonical = [profiles[canonicalModelProfileIds.google], profiles[canonicalModelProfileIds.anthropic], profiles[canonicalModelProfileIds.openai]];
+  const forbidden = /capability|resume|Prophet|applicant|job|cluster|validation/i;
+  for (const profile of canonical) {
+    assert.equal(forbidden.test(profile.id), false);
+    assert.equal(forbidden.test(JSON.stringify(profile.metadata ?? {})), false);
+  }
+
+  for (const [id, profile] of Object.entries(profiles).filter(([, candidate]) => candidate.metadata?.compatibility_alias)) {
+    assert.equal(typeof profile.metadata?.resolves_to_profile_id, "string", id);
+    assert.equal(profile.metadata?.deletion_label, "delete after callers migrate to canonical execution profile IDs");
+  }
+});
+
+test("executeModelOperation has no Corus-specific vocabulary or branching", async () => {
+  const source = await fs.readFile("src/providers/modelOperation.ts", "utf8");
+  assert.doesNotMatch(source, /Corus|Prophet|applicant|resume|capability|cluster|validation|failure analysis/i);
 });

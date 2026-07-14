@@ -15,6 +15,12 @@ export interface ModelProfile {
   metadata?: Record<string, unknown>;
 }
 
+export const canonicalModelProfileIds = {
+  google: "gemini-3.1-flash-lite",
+  anthropic: "claude-sonnet-5",
+  openai: "gpt-5.5-pro"
+} as const;
+
 export function configuredModelIds() {
   return {
     google: process.env.GEMINI_MODEL ?? "gemini-1.5-flash",
@@ -23,81 +29,67 @@ export function configuredModelIds() {
   };
 }
 
-export function modelProfiles(): Record<string, ModelProfile> {
+function baseModelProfiles(): Record<string, ModelProfile> {
   const models = configuredModelIds();
   return {
-    "google-contextualizer": {
-      id: "google-contextualizer",
+    [canonicalModelProfileIds.google]: {
+      id: canonicalModelProfileIds.google,
       provider: "google",
       model: models.google,
       endpoints: { countTokens: ":countTokens", execute: ":generateContent" },
       apiMode: "generateContent",
       enabled: true,
-      version: "v1"
+      version: "v1",
+      metadata: { supported_execution_capabilities: ["json_response", "structured_response_schema", "native_token_count"] }
     },
-    "google-job-requirement-clusterer": {
-      id: "google-job-requirement-clusterer",
-      provider: "google",
-      model: models.google,
-      endpoints: { countTokens: ":countTokens", execute: ":generateContent" },
-      apiMode: "generateContent",
-      enabled: true,
-      version: "v1"
-    },
-    "google-job-requirement-cluster-repairer": {
-      id: "google-job-requirement-cluster-repairer",
-      provider: "google",
-      model: models.google,
-      endpoints: { countTokens: ":countTokens", execute: ":generateContent" },
-      apiMode: "generateContent",
-      enabled: true,
-      version: "v1"
-    },
-    "anthropic-capability-reducer": {
-      id: "anthropic-capability-reducer",
+    [canonicalModelProfileIds.anthropic]: {
+      id: canonicalModelProfileIds.anthropic,
       provider: "anthropic",
       model: models.anthropic,
       endpoints: { countTokens: "/v1/messages/count_tokens", execute: "/v1/messages" },
       apiMode: "messages",
       enabled: true,
-      version: "v1"
+      version: "v1",
+      metadata: { supported_execution_capabilities: ["messages", "json_schema_output_config", "native_token_count"] }
     },
-    "openai-capability-validator": {
-      id: "openai-capability-validator",
+    [canonicalModelProfileIds.openai]: {
+      id: canonicalModelProfileIds.openai,
       provider: "openai",
       model: models.openai,
       endpoints: { countTokens: "/v1/responses/input_tokens", execute: "/v1/responses" },
       apiMode: "responses",
       enabled: true,
-      version: "v1"
-    },
-    "openai-failure-analyzer": {
-      id: "openai-failure-analyzer",
-      provider: "openai",
-      model: models.openai,
-      endpoints: { countTokens: "/v1/responses/input_tokens", execute: "/v1/responses" },
-      apiMode: "responses",
-      enabled: true,
-      version: "v1"
-    },
-    "openai-resume-generator": {
-      id: "openai-resume-generator",
-      provider: "openai",
-      model: models.openai,
-      endpoints: { countTokens: "/v1/responses/input_tokens", execute: "/v1/responses" },
-      apiMode: "responses",
-      enabled: true,
-      version: "v1"
-    },
-    "openai-cluster-validator": {
-      id: "openai-cluster-validator",
-      provider: "openai",
-      model: models.openai,
-      endpoints: { countTokens: "/v1/responses/input_tokens", execute: "/v1/responses" },
-      apiMode: "responses",
-      enabled: true,
-      version: "v1"
+      version: "v1",
+      metadata: { supported_execution_capabilities: ["responses", "text_response", "native_token_count"] }
     }
+  };
+}
+
+function compatibilityAlias(id: string, target: ModelProfile): ModelProfile {
+  return {
+    ...target,
+    id,
+    metadata: {
+      ...target.metadata,
+      compatibility_alias: true,
+      resolves_to_profile_id: target.id,
+      deletion_label: "delete after callers migrate to canonical execution profile IDs"
+    }
+  };
+}
+
+export function modelProfiles(): Record<string, ModelProfile> {
+  const profiles = baseModelProfiles();
+  return {
+    ...profiles,
+    "google-contextualizer": compatibilityAlias("google-contextualizer", profiles[canonicalModelProfileIds.google]),
+    "google-job-requirement-clusterer": compatibilityAlias("google-job-requirement-clusterer", profiles[canonicalModelProfileIds.google]),
+    "google-job-requirement-cluster-repairer": compatibilityAlias("google-job-requirement-cluster-repairer", profiles[canonicalModelProfileIds.google]),
+    "anthropic-capability-reducer": compatibilityAlias("anthropic-capability-reducer", profiles[canonicalModelProfileIds.anthropic]),
+    "openai-capability-validator": compatibilityAlias("openai-capability-validator", profiles[canonicalModelProfileIds.openai]),
+    "openai-failure-analyzer": compatibilityAlias("openai-failure-analyzer", profiles[canonicalModelProfileIds.openai]),
+    "openai-resume-generator": compatibilityAlias("openai-resume-generator", profiles[canonicalModelProfileIds.openai]),
+    "openai-cluster-validator": compatibilityAlias("openai-cluster-validator", profiles[canonicalModelProfileIds.openai])
   };
 }
 

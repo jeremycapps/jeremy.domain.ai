@@ -4,7 +4,7 @@ import { parse, stringify } from "yaml";
 import type { CapabilityCandidate, CapabilityReduction, Context, ProviderMetrics, StageGenerationRecord } from "../types.js";
 import { ProviderConfigurationError, ProviderExecutionError } from "../providers/errors.js";
 import { defaultDirectivePacket, executeModelOperation, modelOperationRecord, providerMetricsFromModelOperation, type PromptPayload } from "../providers/modelOperation.js";
-import { modelProfile } from "../providers/modelProfiles.js";
+import { canonicalModelProfileIds, modelProfile } from "../providers/modelProfiles.js";
 import { parseJsonObject, textFromOpenAIResponse } from "../providers/providerUtils.js";
 import { artifactRef, stageRecord, writeGenerationRecords, writeJsonArtifact } from "./corusArtifacts.js";
 import { getProjectRoot } from "./paths.js";
@@ -316,11 +316,10 @@ async function executeOpenAIClusterValidation(packet: ClusterValidationPacket, r
     ],
     input: packet,
     promptVersion: "validate.openai.cluster.v1",
-    schemaVersion: "corus.openai_cluster_validation.v1",
-    metadata: { max_output_tokens: requestedOutputTokens }
+    schemaVersion: "corus.openai_cluster_validation.v1"
   };
   const directive = { ...defaultDirectivePacket, max_output_tokens: requestedOutputTokens, max_requested_tokens: 14000, rate_limit_tokens_per_minute: 50000, safety_margin: 0.1 };
-  const result = await executeModelOperation({ profile: modelProfile("openai-cluster-validator"), payload, directive, mode: "execute" });
+  const result = await executeModelOperation({ profile: modelProfile(canonicalModelProfileIds.openai), payload, directive, mode: "execute" });
   const raw = result.raw_output;
   const metrics = providerMetricsFromModelOperation(result);
   const metadata = { model: result.model, prompt_version: "validate.openai.cluster.v1", schema_version: "corus.openai_cluster_validation.v1", metrics, provider_completion_state: result.completion_state, model_operation: modelOperationRecord(result) };
@@ -432,7 +431,7 @@ export async function runClusterScopedOpenAIValidation(input: { root?: string; r
           output_ref: artifactRef(root, path.join(runDir, names.failure)),
           raw_output_ref: artifactRef(root, path.join(runDir, names.rawError)),
           provider: error.provider,
-          model: error.metadata?.model ?? modelProfile("openai-cluster-validator").model,
+          model: error.metadata?.model ?? modelProfile(canonicalModelProfileIds.openai).model,
           prompt_version: "validate.openai.cluster.v1",
           schema_version: "corus.openai_cluster_validation.v1",
           validation_status: classification,

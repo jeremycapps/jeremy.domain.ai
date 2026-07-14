@@ -17,7 +17,11 @@ Directive: provider-neutral model-operation refactor before resuming OpenAI clus
 ## Hardcoded Model ID Sources
 
 - Active live model defaults now live in `src/providers/modelProfiles.ts` through `configuredModelIds()`.
-- Product code references profile IDs for live execution:
+- Product code references canonical execution profile IDs for live execution:
+  - `gemini-3.1-flash-lite`
+  - `claude-sonnet-5`
+  - `gpt-5.5-pro`
+- Temporary compatibility aliases remain for prior operation-named profile IDs and are labeled for deletion:
   - `google-contextualizer`
   - `google-job-requirement-clusterer`
   - `google-job-requirement-cluster-repairer`
@@ -27,6 +31,27 @@ Directive: provider-neutral model-operation refactor before resuming OpenAI clus
   - `openai-resume-generator`
   - `openai-cluster-validator`
 - Remaining model string references are mock, fixture, deterministic, readiness, or test assertions.
+
+## Profile Consolidation Audit
+
+Before consolidation, the eight operation-named profiles differed only by `id`.
+Within each provider family, `provider`, `model`, `endpoints`, `apiMode`, `enabled`,
+and `version` were identical:
+
+- Gemini aliases used the same Google model, `:countTokens`, `:generateContent`, and `generateContent` API mode.
+- OpenAI aliases used the same OpenAI model, `/v1/responses/input_tokens`, `/v1/responses`, and `responses` API mode.
+- The Anthropic alias was already the only Anthropic model-operation profile.
+
+After consolidation, only three underlying execution profiles are canonical. The
+remaining distinct profile fields are justified by provider transport:
+
+- `gemini-3.1-flash-lite`: Google provider, Gemini generateContent transport, Gemini token count.
+- `claude-sonnet-5`: Anthropic provider, Messages transport, Messages token count.
+- `gpt-5.5-pro`: OpenAI provider, Responses transport, Responses token count.
+
+Operation meaning now lives in prompt/directive composition. Capability validation,
+cluster validation, failure analysis, resume generation, clustering, repair, and
+contextualization no longer require operation-specific model profiles.
 
 ## Execution Endpoints
 
@@ -50,6 +75,7 @@ Directive: provider-neutral model-operation refactor before resuming OpenAI clus
 - Shared token admission is controlled by `DirectivePacket`.
 - Capability reduction scopes `max_output_tokens` through its operation-specific directive.
 - OpenAI cluster validation scopes its prior cluster token envelope through its operation-specific directive.
+- Structured-output schema and reasoning configuration are carried by `DirectivePacket`.
 - Other migrated operations use `defaultDirectivePacket`.
 
 ## Rate-Limit Checks

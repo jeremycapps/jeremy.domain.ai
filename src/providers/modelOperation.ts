@@ -20,6 +20,10 @@ export interface DirectivePacket {
   rate_limit_tokens_per_minute: number;
   safety_margin: number;
   if_over_budget: "withhold";
+  reasoning_config?: unknown;
+  structured_output_schema?: unknown;
+  execution_overrides?: Record<string, unknown>;
+  bounded_retry_policy?: { max_attempts: number; retry_on: string[] };
 }
 
 export interface SerializedProviderRequest {
@@ -71,8 +75,8 @@ function requireKey(name: string, provider: string): string {
   return value;
 }
 
-function promptText(payload: PromptPayload): string {
-  return [...payload.instructions, JSON.stringify({ input: payload.input, allowed_ids: payload.allowedIds ?? {}, output_schema: payload.outputSchema ?? null, metadata: payload.metadata ?? {} })].join("\n");
+function promptText(payload: PromptPayload, directive: DirectivePacket): string {
+  return [...payload.instructions, JSON.stringify({ input: payload.input, allowed_ids: payload.allowedIds ?? {}, output_schema: directive.structured_output_schema ?? payload.outputSchema ?? null, metadata: payload.metadata ?? {} })].join("\n");
 }
 
 function providerUsage(provider: ModelProvider, raw: unknown): unknown {
@@ -143,9 +147,8 @@ export function modelOperationRecord(result: ModelOperationResult) {
 class OpenAIAdapter implements ProviderAdapter {
   provider: ModelProvider = "openai";
   serialize(profile: ModelProfile, payload: PromptPayload, directive: DirectivePacket): SerializedProviderRequest {
-    const body: Record<string, unknown> = { model: profile.model, input: promptText(payload) };
-    if (payload.metadata?.max_output_tokens !== undefined) body.max_output_tokens = payload.metadata.max_output_tokens;
-    else body.max_output_tokens = directive.max_output_tokens;
+    const body: Record<string, unknown> = { model: profile.model, input: promptText(payload, directive), max_output_tokens: directive.max_output_tokens };
+    Object.assign(body, directive.execution_overrides ?? {});
     return { url: `https://api.openai.com${profile.endpoints.execute}`, init: { method: "POST", headers: { Authorization: `Bearer ${requireKey("OPENAI_API_KEY", "openai")}`, "Content-Type": "application/json" }, body: JSON.stringify(body) }, body };
   }
   async countTokens(profile: ModelProfile, request: SerializedProviderRequest) {
@@ -164,9 +167,10 @@ class OpenAIAdapter implements ProviderAdapter {
 class AnthropicAdapter implements ProviderAdapter {
   provider: ModelProvider = "anthropic";
   serialize(profile: ModelProfile, payload: PromptPayload, directive: DirectivePacket): SerializedProviderRequest {
-    const body: Record<string, unknown> = { model: profile.model, max_tokens: directive.max_output_tokens, messages: [{ role: "user", content: promptText(payload) }] };
-    if (payload.outputSchema) body.output_config = { format: { type: "json_schema", schema: payload.outputSchema } };
-    if (payload.metadata?.thinking) body.thinking = payload.metadata.thinking;
+    const body: Record<string, unknown> = { model: profile.model, max_tokens: directive.max_output_tokens, messages: [{ role: "user", content: promptText(payload, directive) }] };
+    if (directive.structured_output_schema) body.output_config = { format: { type: "json_schema", schema: directive.structured_output_schema } };
+    if (directive.reasoning_config) body.thinking = directive.reasoning_config;
+    Object.assign(body, directive.execution_overrides ?? {});
     return { url: `https://api.anthropic.com${profile.endpoints.execute}`, init: { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": requireKey("ANTHROPIC_API_KEY", "anthropic"), "anthropic-version": "2023-06-01" }, body: JSON.stringify(body) }, body };
   }
   async countTokens(profile: ModelProfile, request: SerializedProviderRequest) {
@@ -184,10 +188,11 @@ class AnthropicAdapter implements ProviderAdapter {
 
 class GoogleAdapter implements ProviderAdapter {
   provider: ModelProvider = "google";
-  serialize(profile: ModelProfile, payload: PromptPayload, _directive: DirectivePacket): SerializedProviderRequest {
+  serialize(profile: ModelProfile, payload: PromptPayload, directive: DirectivePacket): SerializedProviderRequest {
     const generationConfig: Record<string, unknown> = { responseMimeType: "application/json" };
-    if (payload.outputSchema) generationConfig.responseSchema = payload.outputSchema;
-    const body: Record<string, unknown> = { contents: [{ parts: [{ text: promptText(payload) }] }], generationConfig };
+    if (directive.structured_output_schema) generationConfig.responseSchema = directive.structured_output_schema;
+    const body: Record<string, unknown> = { contents: [{ parts: [{ text: promptText(payload, directive) }] }], generationConfig };
+    Object.assign(generationConfig, directive.execution_overrides ?? {});
     return { url: `https://generativelanguage.googleapis.com/v1beta/models/${profile.model}${profile.endpoints.execute}?key=${requireKey("GEMINI_API_KEY", "google")}`, init: { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, body };
   }
   async countTokens(profile: ModelProfile, request: SerializedProviderRequest) {
