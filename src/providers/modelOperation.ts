@@ -37,17 +37,53 @@ export interface DataEgressDecision {
   reason: string;
 }
 
-export interface SerializedProviderRequest {
-  url: string;
-  init: RequestInit;
-  body: Record<string, unknown>;
+export type CanonicalContent = unknown;
+export type CanonicalTool = Record<string, unknown>;
+export type CanonicalOutputContract = { name: string; schema: unknown };
+
+export interface CanonicalInput {
+  instructions?: string;
+  content: CanonicalContent;
+  tools?: CanonicalTool[];
+  output_contract?: CanonicalOutputContract;
+}
+
+export interface GenerationConfig {
+  max_generated_tokens: number;
+  reasoning_effort?: "none" | "minimal" | "low" | "medium" | "high";
+  temperature?: number;
+  stream?: boolean;
+}
+
+export interface CanonicalModelOperation {
+  profile: ModelProfile;
+  input: CanonicalInput;
+  generation: GenerationConfig;
+  directive: DirectivePacket;
+}
+
+export type ProviderTokenCount =
+  | { status: "available"; input_tokens: number; raw?: unknown; native_request?: Record<string, unknown> }
+  | { status: "unavailable"; error: string; raw?: unknown; native_request?: Record<string, unknown> };
+
+export interface RawProviderResponse {
+  ok: boolean;
+  raw: unknown;
+  native_request?: Record<string, unknown>;
+}
+
+export interface NormalizedProviderResponse {
+  ok: boolean;
+  usage?: unknown;
+  completion_state?: string | null;
+  error_classification?: string | null;
 }
 
 export interface ProviderAdapter {
   provider: ModelProvider;
-  serialize(profile: ModelProfile, payload: PromptPayload, directive: DirectivePacket): SerializedProviderRequest;
-  countTokens(profile: ModelProfile, request: SerializedProviderRequest): Promise<{ status: "available"; input_tokens: number; raw?: unknown } | { status: "unavailable"; error: string; raw?: unknown }>;
-  execute(profile: ModelProfile, request: SerializedProviderRequest): Promise<{ ok: boolean; raw: unknown; usage?: unknown; completion_state?: string | null; error_classification?: string | null }>;
+  count(args: { profile: ModelProfile; input: CanonicalInput }): Promise<ProviderTokenCount>;
+  generate(args: { profile: ModelProfile; input: CanonicalInput; generation: GenerationConfig }): Promise<RawProviderResponse>;
+  normalize(args: { profile: ModelProfile; raw: RawProviderResponse }): NormalizedProviderResponse;
 }
 
 export type ModelExecutionStatus =
@@ -135,8 +171,37 @@ function requireKey(name: string, provider: string): string {
   return value;
 }
 
-function promptText(payload: PromptPayload, directive: DirectivePacket): string {
-  return [...payload.instructions, JSON.stringify({ input: payload.input, allowed_ids: payload.allowedIds ?? {}, output_schema: directive.structured_output_schema ?? payload.outputSchema ?? null, metadata: payload.metadata ?? {} })].join("\n");
+function canonicalText(input: CanonicalInput): string {
+  return [
+    input.instructions ?? "",
+    JSON.stringify({ content: input.content, tools: input.tools ?? [], output_contract: input.output_contract ?? null })
+  ].filter(Boolean).join("\n");
+}
+
+function compileCanonicalInput(payload: PromptPayload, directive: DirectivePacket): CanonicalInput {
+  const schema = directive.structured_output_schema ?? payload.outputSchema ?? null;
+  return {
+    instructions: payload.instructions.join("\n"),
+    content: { operation: payload.operation, input: payload.input, allowed_ids: payload.allowedIds ?? {}, metadata: payload.metadata ?? {} },
+    output_contract: schema ? { name: "structured_output", schema } : undefined
+  };
+}
+
+function reasoningEffort(value: unknown): GenerationConfig["reasoning_effort"] | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const effort = (value as { effort?: unknown; type?: unknown }).effort ?? (value as { type?: unknown }).type;
+  if (effort === "disabled") return "none";
+  return ["none", "minimal", "low", "medium", "high"].includes(String(effort)) ? effort as GenerationConfig["reasoning_effort"] : undefined;
+}
+
+function compileGenerationConfig(directive: DirectivePacket): GenerationConfig {
+  const overrides = directive.execution_overrides ?? {};
+  const reasoning = reasoningEffort(directive.reasoning_config) ?? reasoningEffort(overrides.reasoning);
+  const generation: GenerationConfig = { max_generated_tokens: directive.max_output_tokens };
+  if (reasoning) generation.reasoning_effort = reasoning;
+  if (typeof overrides.temperature === "number") generation.temperature = overrides.temperature;
+  if (typeof overrides.stream === "boolean") generation.stream = overrides.stream;
+  return generation;
 }
 
 function providerUsage(provider: ModelProvider, raw: unknown): unknown {
@@ -212,68 +277,80 @@ export function modelOperationRecord(result: ModelOperationResult) {
 
 class OpenAIAdapter implements ProviderAdapter {
   provider: ModelProvider = "openai";
-  serialize(profile: ModelProfile, payload: PromptPayload, directive: DirectivePacket): SerializedProviderRequest {
-    const body: Record<string, unknown> = { model: profile.model, input: promptText(payload, directive), max_output_tokens: directive.max_output_tokens };
-    if (directive.structured_output_schema) body.text = { format: { type: "json_schema", name: "structured_output", schema: directive.structured_output_schema, strict: false } };
-    Object.assign(body, directive.execution_overrides ?? {});
-    return { url: `https://api.openai.com${profile.endpoints.execute}`, init: { method: "POST", headers: { Authorization: `Bearer ${requireKey("OPENAI_API_KEY", "openai")}`, "Content-Type": "application/json" }, body: JSON.stringify(body) }, body };
-  }
-  async countTokens(profile: ModelProfile, request: SerializedProviderRequest) {
-    const response = await fetch(`https://api.openai.com${profile.endpoints.countTokens}`, { method: "POST", headers: { Authorization: `Bearer ${requireKey("OPENAI_API_KEY", "openai")}`, "Content-Type": "application/json" }, body: JSON.stringify(request.body) });
+  async count({ profile, input }: { profile: ModelProfile; input: CanonicalInput }): Promise<ProviderTokenCount> {
+    const body: Record<string, unknown> = { model: profile.model, input: canonicalText(input) };
+    if (input.output_contract) body.text = { format: { type: "json_schema", name: input.output_contract.name, schema: input.output_contract.schema, strict: false } };
+    const response = await fetch(`https://api.openai.com${profile.endpoints.countTokens}`, { method: "POST", headers: { Authorization: `Bearer ${requireKey("OPENAI_API_KEY", "openai")}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const raw = await response.json().catch(() => ({}));
     const tokens = typeof raw.input_tokens === "number" ? raw.input_tokens : typeof raw.tokens === "number" ? raw.tokens : null;
-    return response.ok && tokens !== null ? { status: "available" as const, input_tokens: tokens, raw } : { status: "unavailable" as const, error: `token count failed with HTTP ${response.status}`, raw };
+    return response.ok && tokens !== null ? { status: "available" as const, input_tokens: tokens, raw, native_request: body } : { status: "unavailable" as const, error: `token count failed with HTTP ${response.status}`, raw, native_request: body };
   }
-  async execute(_profile: ModelProfile, request: SerializedProviderRequest) {
-    const response = await fetch(request.url, request.init);
+  async generate({ profile, input, generation }: { profile: ModelProfile; input: CanonicalInput; generation: GenerationConfig }): Promise<RawProviderResponse> {
+    const body: Record<string, unknown> = { model: profile.model, input: canonicalText(input), max_output_tokens: generation.max_generated_tokens };
+    if (input.output_contract) body.text = { format: { type: "json_schema", name: input.output_contract.name, schema: input.output_contract.schema, strict: false } };
+    if (generation.reasoning_effort && generation.reasoning_effort !== "none") body.reasoning = { effort: generation.reasoning_effort };
+    if (typeof generation.temperature === "number") body.temperature = generation.temperature;
+    if (typeof generation.stream === "boolean") body.stream = generation.stream;
+    const response = await fetch(`https://api.openai.com${profile.endpoints.execute}`, { method: "POST", headers: { Authorization: `Bearer ${requireKey("OPENAI_API_KEY", "openai")}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const raw = await response.json().catch(() => ({}));
-    return { ok: response.ok, raw, usage: providerUsage("openai", raw), completion_state: typeof raw.status === "string" ? raw.status : response.ok ? "completed" : "provider_error", error_classification: response.ok ? null : JSON.stringify(raw).includes("rate_limit") ? "rate_limit" : "provider_error" };
+    return { ok: response.ok, raw, native_request: body };
+  }
+  normalize({ raw }: { profile: ModelProfile; raw: RawProviderResponse }): NormalizedProviderResponse {
+    const data = raw.raw;
+    return { ok: raw.ok, usage: providerUsage("openai", data), completion_state: data && typeof data === "object" && typeof (data as { status?: unknown }).status === "string" ? (data as { status: string }).status : raw.ok ? "completed" : "provider_error", error_classification: raw.ok ? null : JSON.stringify(data).includes("rate_limit") ? "rate_limit" : "provider_error" };
   }
 }
 
 class AnthropicAdapter implements ProviderAdapter {
   provider: ModelProvider = "anthropic";
-  serialize(profile: ModelProfile, payload: PromptPayload, directive: DirectivePacket): SerializedProviderRequest {
-    const body: Record<string, unknown> = { model: profile.model, max_tokens: directive.max_output_tokens, messages: [{ role: "user", content: promptText(payload, directive) }] };
-    if (directive.structured_output_schema) body.output_config = { format: { type: "json_schema", schema: directive.structured_output_schema } };
-    if (directive.reasoning_config) body.thinking = directive.reasoning_config;
-    Object.assign(body, directive.execution_overrides ?? {});
-    return { url: `https://api.anthropic.com${profile.endpoints.execute}`, init: { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": requireKey("ANTHROPIC_API_KEY", "anthropic"), "anthropic-version": "2023-06-01" }, body: JSON.stringify(body) }, body };
-  }
-  async countTokens(profile: ModelProfile, request: SerializedProviderRequest) {
-    const response = await fetch(`https://api.anthropic.com${profile.endpoints.countTokens}`, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": requireKey("ANTHROPIC_API_KEY", "anthropic"), "anthropic-version": "2023-06-01" }, body: JSON.stringify(request.body) });
+  async count({ profile, input }: { profile: ModelProfile; input: CanonicalInput }): Promise<ProviderTokenCount> {
+    const body: Record<string, unknown> = { model: profile.model, messages: [{ role: "user", content: canonicalText(input) }] };
+    if (input.output_contract) body.output_config = { format: { type: "json_schema", schema: input.output_contract.schema } };
+    const response = await fetch(`https://api.anthropic.com${profile.endpoints.countTokens}`, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": requireKey("ANTHROPIC_API_KEY", "anthropic"), "anthropic-version": "2023-06-01" }, body: JSON.stringify(body) });
     const raw = await response.json().catch(() => ({}));
     const tokens = typeof raw.input_tokens === "number" ? raw.input_tokens : null;
-    return response.ok && tokens !== null ? { status: "available" as const, input_tokens: tokens, raw } : { status: "unavailable" as const, error: `token count failed with HTTP ${response.status}`, raw };
+    return response.ok && tokens !== null ? { status: "available" as const, input_tokens: tokens, raw, native_request: body } : { status: "unavailable" as const, error: `token count failed with HTTP ${response.status}`, raw, native_request: body };
   }
-  async execute(_profile: ModelProfile, request: SerializedProviderRequest) {
-    const response = await fetch(request.url, request.init);
+  async generate({ profile, input, generation }: { profile: ModelProfile; input: CanonicalInput; generation: GenerationConfig }): Promise<RawProviderResponse> {
+    const body: Record<string, unknown> = { model: profile.model, max_tokens: generation.max_generated_tokens, messages: [{ role: "user", content: canonicalText(input) }] };
+    if (input.output_contract) body.output_config = { format: { type: "json_schema", schema: input.output_contract.schema } };
+    if (generation.reasoning_effort === "none") body.thinking = { type: "disabled" };
+    else if (generation.reasoning_effort) body.thinking = { type: "enabled", budget_tokens: generation.reasoning_effort };
+    if (typeof generation.temperature === "number") body.temperature = generation.temperature;
+    if (typeof generation.stream === "boolean") body.stream = generation.stream;
+    const response = await fetch(`https://api.anthropic.com${profile.endpoints.execute}`, { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": requireKey("ANTHROPIC_API_KEY", "anthropic"), "anthropic-version": "2023-06-01" }, body: JSON.stringify(body) });
     const raw = await response.json().catch(() => ({}));
-    return { ok: response.ok, raw, usage: providerUsage("anthropic", raw), completion_state: typeof raw.stop_reason === "string" ? raw.stop_reason : response.ok ? "completed" : "provider_error", error_classification: response.ok ? null : JSON.stringify(raw).includes("rate_limit") ? "rate_limit" : "provider_error" };
+    return { ok: response.ok, raw, native_request: body };
+  }
+  normalize({ raw }: { profile: ModelProfile; raw: RawProviderResponse }): NormalizedProviderResponse {
+    const data = raw.raw;
+    return { ok: raw.ok, usage: providerUsage("anthropic", data), completion_state: data && typeof data === "object" && typeof (data as { stop_reason?: unknown }).stop_reason === "string" ? (data as { stop_reason: string }).stop_reason : raw.ok ? "completed" : "provider_error", error_classification: raw.ok ? null : JSON.stringify(data).includes("rate_limit") ? "rate_limit" : "provider_error" };
   }
 }
 
 class GoogleAdapter implements ProviderAdapter {
   provider: ModelProvider = "google";
-  serialize(profile: ModelProfile, payload: PromptPayload, directive: DirectivePacket): SerializedProviderRequest {
-    const generationConfig: Record<string, unknown> = { responseMimeType: "application/json" };
-    if (directive.structured_output_schema) generationConfig.responseSchema = directive.structured_output_schema;
-    const body: Record<string, unknown> = { contents: [{ parts: [{ text: promptText(payload, directive) }] }], generationConfig };
-    Object.assign(generationConfig, directive.execution_overrides ?? {});
-    return { url: `https://generativelanguage.googleapis.com/v1beta/models/${profile.model}${profile.endpoints.execute}?key=${requireKey("GEMINI_API_KEY", "google")}`, init: { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, body };
-  }
-  async countTokens(profile: ModelProfile, request: SerializedProviderRequest) {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${profile.model}${profile.endpoints.countTokens}?key=${requireKey("GEMINI_API_KEY", "google")}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: request.body.contents }) });
+  async count({ profile, input }: { profile: ModelProfile; input: CanonicalInput }): Promise<ProviderTokenCount> {
+    const body: Record<string, unknown> = { contents: [{ parts: [{ text: canonicalText(input) }] }] };
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${profile.model}${profile.endpoints.countTokens}?key=${requireKey("GEMINI_API_KEY", "google")}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const raw = await response.json().catch(() => ({}));
     const tokens = typeof raw.totalTokens === "number" ? raw.totalTokens : null;
-    return response.ok && tokens !== null ? { status: "available" as const, input_tokens: tokens, raw } : { status: "unavailable" as const, error: `token count failed with HTTP ${response.status}`, raw };
+    return response.ok && tokens !== null ? { status: "available" as const, input_tokens: tokens, raw, native_request: body } : { status: "unavailable" as const, error: `token count failed with HTTP ${response.status}`, raw, native_request: body };
   }
-  async execute(_profile: ModelProfile, request: SerializedProviderRequest) {
-    const response = await fetch(request.url, request.init);
+  async generate({ profile, input, generation }: { profile: ModelProfile; input: CanonicalInput; generation: GenerationConfig }): Promise<RawProviderResponse> {
+    const generationConfig: Record<string, unknown> = { responseMimeType: "application/json", maxOutputTokens: generation.max_generated_tokens };
+    if (input.output_contract) generationConfig.responseSchema = input.output_contract.schema;
+    if (typeof generation.temperature === "number") generationConfig.temperature = generation.temperature;
+    const body: Record<string, unknown> = { contents: [{ parts: [{ text: canonicalText(input) }] }], generationConfig };
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${profile.model}${profile.endpoints.execute}?key=${requireKey("GEMINI_API_KEY", "google")}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const raw = await response.json().catch(() => ({}));
-    const candidates = raw && typeof raw === "object" ? (raw as { candidates?: unknown }).candidates : null;
+    return { ok: response.ok, raw, native_request: body };
+  }
+  normalize({ raw }: { profile: ModelProfile; raw: RawProviderResponse }): NormalizedProviderResponse {
+    const data = raw.raw;
+    const candidates = data && typeof data === "object" ? (data as { candidates?: unknown }).candidates : null;
     const finish = Array.isArray(candidates) ? (candidates[0] as { finishReason?: unknown }).finishReason : null;
-    return { ok: response.ok, raw, usage: providerUsage("google", raw), completion_state: typeof finish === "string" ? finish : response.ok ? "completed" : "provider_error", error_classification: response.ok ? null : "provider_error" };
+    return { ok: raw.ok, usage: providerUsage("google", data), completion_state: typeof finish === "string" ? finish : raw.ok ? "completed" : "provider_error", error_classification: raw.ok ? null : "provider_error" };
   }
 }
 
@@ -283,8 +360,8 @@ export const providerAdapters: Record<ModelProvider, ProviderAdapter> = {
   google: new GoogleAdapter()
 };
 
-function fallbackInputTokenEstimate(prompt: PromptPayload, directive: DirectivePacket): number {
-  return Math.ceil(promptText(prompt, directive).length / 4);
+function fallbackInputTokenEstimate(input: CanonicalInput): number {
+  return Math.ceil(canonicalText(input).length / 4);
 }
 
 function totalTokensFromUsage(usage: unknown): number | null {
@@ -308,11 +385,12 @@ export async function executeModelOperation<TValue = unknown>(
   const resolved = resolveModelProfile(input.profile);
   const profile = resolved.profile;
   const adapter = (input.adapterRegistry ?? providerAdapters)[profile.provider];
+  const canonicalInput = compileCanonicalInput(prompt as PromptPayload, directive);
+  const generation = compileGenerationConfig(directive);
   const operation_id = `${(prompt as PromptPayload).operation}.${Date.now()}`;
   const remainingRateBudget = input.remainingRateBudget ?? directive.rate_limit_tokens_per_minute;
   const requestedReasoning = directive.requested_reasoning_tokens ?? null;
-  const requestedReasoningForBudget = requestedReasoning ?? 0;
-  const requestedOutput = directive.max_output_tokens;
+  const requestedOutput = generation.max_generated_tokens;
   const contextLimit = directive.max_context_tokens ?? directive.max_input_tokens;
   const tokenBudgetLimit = directive.max_requested_tokens;
   const directiveVersion = directive.directive_version ?? "v1";
@@ -361,8 +439,8 @@ export async function executeModelOperation<TValue = unknown>(
     admission_status: receipt.execution_status === "admitted" || receipt.execution_status === "completed" ? "eligible" : "withheld",
     exact_input_tokens: receipt.token_count_source === "native" ? receipt.estimated_input_tokens : null,
     allocated_output_tokens: requestedOutput,
-    requested_tokens: receipt.estimated_input_tokens === null ? null : receipt.estimated_input_tokens + requestedReasoningForBudget + requestedOutput,
-    safety_adjusted_requested_tokens: receipt.estimated_input_tokens === null ? null : Math.ceil((receipt.estimated_input_tokens + requestedReasoningForBudget + requestedOutput) * (1 + directive.safety_margin)),
+    requested_tokens: receipt.estimated_input_tokens === null ? null : receipt.estimated_input_tokens + requestedOutput,
+    safety_adjusted_requested_tokens: receipt.estimated_input_tokens === null ? null : Math.ceil((receipt.estimated_input_tokens + requestedOutput) * (1 + directive.safety_margin)),
     remaining_rate_budget: remainingRateBudget,
     actual_output_tokens: receipt.output_tokens,
     completion_state: receipt.stop_reason,
@@ -392,12 +470,11 @@ export async function executeModelOperation<TValue = unknown>(
     });
   }
 
-  const request = adapter.serialize(profile, prompt as PromptPayload, directive);
-  const unavailableTokenCount = { status: "unavailable" as const, error: profile.enabled ? "token count unavailable" : "profile disabled" };
-  const tokenCount = profile.enabled ? await adapter.countTokens(profile, request) : unavailableTokenCount;
+  const unavailableTokenCount: ProviderTokenCount = { status: "unavailable", error: profile.enabled ? "token count unavailable" : "profile disabled" };
+  const tokenCount = profile.enabled ? await adapter.count({ profile, input: canonicalInput }) : unavailableTokenCount;
   const tokenCountSource = tokenCount.status === "available" ? "native" : directive.token_count_failure_policy === "use_fallback_estimate" ? "fallback_estimate" : "unavailable";
-  const estimatedInput = tokenCount.status === "available" ? tokenCount.input_tokens : tokenCountSource === "fallback_estimate" ? fallbackInputTokenEstimate(prompt as PromptPayload, directive) : null;
-  const requestedTokens = estimatedInput === null ? null : estimatedInput + requestedReasoningForBudget + requestedOutput;
+  const estimatedInput = tokenCount.status === "available" ? tokenCount.input_tokens : tokenCountSource === "fallback_estimate" ? fallbackInputTokenEstimate(canonicalInput) : null;
+  const requestedTokens = estimatedInput === null ? null : estimatedInput + requestedOutput;
   const safetyAdjusted = requestedTokens === null ? null : Math.ceil(requestedTokens * (1 + directive.safety_margin));
   const tokenError = tokenCount.status === "available" ? null : tokenCount.error;
 
@@ -426,7 +503,7 @@ export async function executeModelOperation<TValue = unknown>(
     completion_state: mode === "preflight" && !ineligibleStatus ? "preflight_only" : ineligibleStatus ? "withheld" : "admitted",
     provider_error_classification: ineligibleStatus ? estimatedInput === null ? "token_count_unavailable" : ineligibleStatus : null,
     token_count: tokenCount.status === "available" ? { status: "available" as const, raw: tokenCount.raw } : tokenCount,
-    native_request: request.body
+    native_request: tokenCount.native_request ?? {}
   };
 
   if (ineligibleStatus || mode === "preflight") {
@@ -434,8 +511,9 @@ export async function executeModelOperation<TValue = unknown>(
   }
 
   const started = Date.now();
-  const executed = await adapter.execute(profile, request);
+  const raw = await adapter.generate({ profile, input: canonicalInput, generation });
   const latency_ms = Date.now() - started;
+  const executed = adapter.normalize({ profile, raw });
   const usage = executed.usage;
   const actualInput = tokenFromUsage(usage, ["input_tokens", "prompt_tokens", "promptTokenCount"]) ?? estimatedInput;
   const outputTokens = tokenFromUsage(usage, ["output_tokens", "completion_tokens", "candidatesTokenCount"]);
@@ -462,12 +540,12 @@ export async function executeModelOperation<TValue = unknown>(
     reasoning_tokens: observedReasoning,
     completion_state: receipt.stop_reason,
     normalized_output: null,
-    raw_output: executed.raw,
+    raw_output: raw.raw,
     latency_ms,
     cost_usd: null,
     provider_error_classification: executed.error_classification ?? null,
     token_count: tokenCount.status === "available" ? { status: "available" as const, raw: tokenCount.raw } : tokenCount,
-    native_request: request.body
+    native_request: raw.native_request ?? {}
   });
 }
 

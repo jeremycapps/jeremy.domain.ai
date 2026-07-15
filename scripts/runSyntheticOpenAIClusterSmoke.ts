@@ -124,7 +124,7 @@ async function main() {
   await writeYaml(path.join(outputDir, "02-token-count-record.yaml"), {
     token_count: result.token_count,
     native_input_tokens: result.exact_input_tokens,
-    provider_output_ceiling: directive.max_output_tokens,
+    max_generated_tokens: directive.max_output_tokens,
     estimated_total: result.requested_tokens,
     requested_reasoning_effort: "low",
     requested_reasoning_allocation: null,
@@ -171,7 +171,7 @@ async function main() {
     data_egress: result.receipt.data_egress,
     token_preflight: {
       native_input_tokens: result.exact_input_tokens,
-      output_ceiling: directive.max_output_tokens,
+      max_generated_tokens: directive.max_output_tokens,
       estimated_total: result.requested_tokens,
       admission_status: result.admission_status
     },

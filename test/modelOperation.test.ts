@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import test from "node:test";
-import { executeModelOperation, type DataEgressDecision, type DirectivePacket, type ProviderAdapter, type PromptPayload } from "../src/providers/modelOperation.js";
+import { executeModelOperation, providerAdapters, type CanonicalInput, type DataEgressDecision, type DirectivePacket, type GenerationConfig, type ProviderAdapter, type PromptPayload } from "../src/providers/modelOperation.js";
 import { canonicalModelProfileIds, modelProfiles, type ModelProfile } from "../src/providers/modelProfiles.js";
 
 const profile = (provider: "openai" | "anthropic" | "google" = "openai"): ModelProfile => ({
@@ -37,25 +37,33 @@ const directive: DirectivePacket = {
   bounded_retry_policy: { max_attempts: 1, retry_on: [] }
 };
 
-function adapter(inputTokens = 10): ProviderAdapter & { counts: { count: number; execute: number }; lastRequest?: Record<string, unknown>; operations: string[]; schemas: unknown[] } {
+function contentOperation(input: CanonicalInput): string {
+  const content = input.content as { operation?: unknown };
+  return typeof content.operation === "string" ? content.operation : "unknown";
+}
+
+function adapter(inputTokens = 10): ProviderAdapter & { counts: { count: number; execute: number }; lastRequest?: Record<string, unknown>; lastCountInput?: CanonicalInput; lastGeneration?: GenerationConfig; operations: string[]; schemas: unknown[] } {
   return {
     provider: "openai",
     counts: { count: 0, execute: 0 },
     operations: [],
     schemas: [],
-    serialize(profileArg, payloadArg, directiveArg) {
-      this.operations.push(payloadArg.operation);
-      this.schemas.push(directiveArg.structured_output_schema ?? null);
-      this.lastRequest = { model: profileArg.model, payload: payloadArg, max_output_tokens: directiveArg.max_output_tokens, directive: directiveArg };
-      return { url: "/execute", init: { method: "POST" }, body: this.lastRequest };
-    },
-    async countTokens() {
+    async count({ input }) {
       this.counts.count += 1;
-      return { status: "available", input_tokens: inputTokens, raw: { input_tokens: inputTokens } };
+      this.lastCountInput = input;
+      this.operations.push(contentOperation(input));
+      this.schemas.push(input.output_contract?.schema ?? null);
+      return { status: "available", input_tokens: inputTokens, raw: { input_tokens: inputTokens }, native_request: { input } };
     },
-    async execute() {
+    async generate({ profile: profileArg, input, generation }) {
       this.counts.execute += 1;
-      return { ok: true, raw: { output_text: "{}" }, usage: { input_tokens: inputTokens, output_tokens: 5, output_tokens_details: { reasoning_tokens: 2 } }, completion_state: "completed", error_classification: null };
+      this.lastGeneration = generation;
+      this.lastRequest = { model: profileArg.model, input, generation };
+      return { ok: true, raw: { output_text: "{}", usage: { input_tokens: inputTokens, output_tokens: 5, output_tokens_details: { reasoning_tokens: 2 } }, status: "completed" }, native_request: this.lastRequest };
+    },
+    normalize({ raw }) {
+      const data = raw.raw as { usage?: unknown; status?: string };
+      return { ok: raw.ok, usage: data.usage, completion_state: data.status ?? "completed", error_classification: raw.ok ? null : "provider_error" };
     }
   };
 }
@@ -74,13 +82,12 @@ test("all providers can use the same generic executor", async () => {
 test("profile selects provider/model/endpoints while payload stays semantic", async () => {
   const fake = adapter();
   await executeModelOperation({ profile: profile("openai"), payload, directive, mode: "preflight", adapterRegistry: { openai: fake } as any });
-  assert.equal(fake.lastRequest?.model, "openai-model");
-  assert.equal((fake.lastRequest?.payload as PromptPayload).operation, "test_operation");
-  assert.equal(JSON.stringify(fake.lastRequest?.payload).includes("OPENAI_API_KEY"), false);
-  assert.deepEqual((fake.lastRequest?.directive as DirectivePacket).structured_output_schema, { type: "object" });
+  assert.equal(contentOperation(fake.lastCountInput as CanonicalInput), "test_operation");
+  assert.equal(JSON.stringify(fake.lastCountInput).includes("OPENAI_API_KEY"), false);
+  assert.deepEqual(fake.lastCountInput?.output_contract?.schema, { type: "object" });
 });
 
-test("OpenAI request body carries directive structured-output schema", async () => {
+test("OpenAI count receives schema-bearing input without generation controls", async () => {
   const requests: Record<string, unknown>[] = [];
   const originalFetch = globalThis.fetch;
   const originalKey = process.env.OPENAI_API_KEY;
@@ -102,6 +109,119 @@ test("OpenAI request body carries directive structured-output schema", async () 
   assert.equal(format?.type, "json_schema");
   assert.equal(format?.name, "structured_output");
   assert.deepEqual(format?.schema, directive.structured_output_schema);
+  assert.equal("max_output_tokens" in requests[0], false);
+  assert.equal("max_tokens" in requests[0], false);
+  assert.equal("generationConfig" in requests[0], false);
+});
+
+test("OpenAI generation receives configured generated-token ceiling", async () => {
+  const requests: Record<string, unknown>[] = [];
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.OPENAI_API_KEY;
+  globalThis.fetch = async (_url, init) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    requests.push(body);
+    if ("max_output_tokens" in body) {
+      return new Response(JSON.stringify({ status: "completed", output_text: "{}", usage: { input_tokens: 10, output_tokens: 5 } }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    return new Response(JSON.stringify({ input_tokens: 10 }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+
+  try {
+    process.env.OPENAI_API_KEY = "test-key";
+    await executeModelOperation({ profile: profile("openai"), payload, directive, mode: "execute" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalKey;
+  }
+
+  assert.equal(requests.length, 2);
+  assert.equal("max_output_tokens" in requests[0], false);
+  assert.equal(requests[1]?.max_output_tokens, directive.max_output_tokens);
+});
+
+test("all real providers satisfy the same count generate normalize interface", () => {
+  for (const provider of ["openai", "anthropic", "google"] as const) {
+    assert.equal(typeof providerAdapters[provider].count, "function");
+    assert.equal(typeof providerAdapters[provider].generate, "function");
+    assert.equal(typeof providerAdapters[provider].normalize, "function");
+  }
+});
+
+test("Anthropic count omits generation controls while generation receives max_tokens", async () => {
+  const requests: Record<string, unknown>[] = [];
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.ANTHROPIC_API_KEY;
+  globalThis.fetch = async (_url, init) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    requests.push(body);
+    if ("max_tokens" in body) {
+      return new Response(JSON.stringify({ stop_reason: "end_turn", usage: { input_tokens: 10, output_tokens: 5 } }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    return new Response(JSON.stringify({ input_tokens: 10 }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+
+  try {
+    process.env.ANTHROPIC_API_KEY = "test-key";
+    await executeModelOperation({ profile: profile("anthropic"), payload, directive, mode: "execute" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = originalKey;
+  }
+
+  assert.equal(requests.length, 2);
+  assert.equal("max_tokens" in requests[0], false);
+  assert.equal("thinking" in requests[0], false);
+  assert.equal(requests[1]?.max_tokens, directive.max_output_tokens);
+  assert.match(JSON.stringify(requests[0]), /Do the thing/);
+  assert.match(JSON.stringify(requests[0]), /output_contract/);
+});
+
+test("Gemini count omits generation controls while generation receives maxOutputTokens", async () => {
+  const requests: Record<string, unknown>[] = [];
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.GEMINI_API_KEY;
+  globalThis.fetch = async (_url, init) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    requests.push(body);
+    if ("generationConfig" in body) {
+      return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP" }], usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5, totalTokenCount: 15 } }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }
+    return new Response(JSON.stringify({ totalTokens: 10 }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+
+  try {
+    process.env.GEMINI_API_KEY = "test-key";
+    await executeModelOperation({ profile: profile("google"), payload, directive, mode: "execute" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalKey;
+  }
+
+  assert.equal(requests.length, 2);
+  assert.equal("generationConfig" in requests[0], false);
+  assert.equal((requests[1]?.generationConfig as Record<string, unknown>).maxOutputTokens, directive.max_output_tokens);
+  assert.match(JSON.stringify(requests[0]), /Do the thing/);
+  assert.match(JSON.stringify(requests[0]), /output_contract/);
+});
+
+test("generation config cannot leak into count through object spreading", async () => {
+  const fake = adapter();
+  await executeModelOperation({
+    profile: profile(),
+    payload,
+    directive: { ...directive, reasoning_config: { effort: "low" }, execution_overrides: { temperature: 0.2, stream: false } },
+    mode: "execute",
+    adapterRegistry: { openai: fake } as any
+  });
+
+  assert.equal(JSON.stringify(fake.lastCountInput).includes("max_generated_tokens"), false);
+  assert.equal(JSON.stringify(fake.lastCountInput).includes("reasoning_effort"), false);
+  assert.equal(fake.lastGeneration?.max_generated_tokens, directive.max_output_tokens);
+  assert.equal(fake.lastGeneration?.reasoning_effort, "low");
 });
 
 test("native token counting happens before execution and preflight never executes", async () => {
@@ -129,6 +249,7 @@ test("private and restricted payloads are withheld before token counting", async
     assert.equal(result.receipt.data_egress?.classification, classification);
     assert.equal(fake.counts.count, 0);
     assert.equal(fake.counts.execute, 0);
+    assert.equal(fake.lastCountInput, undefined);
     assert.equal(fake.lastRequest, undefined);
   }
 });
@@ -182,7 +303,7 @@ test("data-egress withholding and token withholding stay distinct in the receipt
 
 test("execution is withheld when token counting fails", async () => {
   const fake = adapter();
-  fake.countTokens = async () => {
+  fake.count = async () => {
     fake.counts.count += 1;
     return { status: "unavailable", error: "no native count" };
   };
@@ -213,7 +334,7 @@ test("runtime provenance is returned from profile and adapter usage is normalize
   assert.equal(result.actual_input_tokens, 10);
   assert.equal(result.actual_output_tokens, 5);
   assert.equal(result.reasoning_tokens, 2);
-  assert.deepEqual(result.raw_output, { output_text: "{}" });
+  assert.equal((result.raw_output as { output_text?: unknown }).output_text, "{}");
 });
 
 test("one OpenAI model profile executes validation, cluster validation, failure analysis, and resume operations", async () => {
@@ -324,7 +445,7 @@ test("token admission distinguishes context, operation budget, and rolling rate 
 
 test("native count failure can withhold or use an explicit fallback estimate", async () => {
   const withheldFake = adapter();
-  withheldFake.countTokens = async () => {
+  withheldFake.count = async () => {
     withheldFake.counts.count += 1;
     return { status: "unavailable", error: "native endpoint unavailable" };
   };
@@ -335,7 +456,7 @@ test("native count failure can withhold or use an explicit fallback estimate", a
   assert.equal(withheldFake.counts.execute, 0);
 
   const fallbackFake = adapter();
-  fallbackFake.countTokens = async () => {
+  fallbackFake.count = async () => {
     fallbackFake.counts.count += 1;
     return { status: "unavailable", error: "native endpoint unavailable" };
   };
@@ -353,9 +474,9 @@ test("native count failure can withhold or use an explicit fallback estimate", a
 
 test("raw output, usage, and artifact refs survive downstream parser or validation failure", async () => {
   const fake = adapter(12);
-  fake.execute = async () => {
+  fake.generate = async () => {
     fake.counts.execute += 1;
-    return { ok: true, raw: { output_text: "{\"broken\":" }, usage: { input_tokens: 12, output_tokens: 7, output_tokens_details: { reasoning_tokens: 3 } }, completion_state: "completed", error_classification: null };
+    return { ok: true, raw: { output_text: "{\"broken\":", usage: { input_tokens: 12, output_tokens: 7, output_tokens_details: { reasoning_tokens: 3 } }, status: "completed" } };
   };
   const result = await executeModelOperation({
     profile: profile(),
@@ -367,7 +488,7 @@ test("raw output, usage, and artifact refs survive downstream parser or validati
     adapterRegistry: { openai: fake } as any
   });
 
-  assert.deepEqual(result.raw_output, { output_text: "{\"broken\":" });
+  assert.equal((result.raw_output as { output_text?: unknown }).output_text, "{\"broken\":");
   assert.equal(result.receipt.raw_artifact_ref, "outputs/run/raw-provider.json");
   assert.equal(result.receipt.normalized_artifact_ref, "outputs/run/normalized.yaml");
   assert.equal(result.receipt.actual_input_tokens, 12);
@@ -377,9 +498,9 @@ test("raw output, usage, and artifact refs survive downstream parser or validati
 
 test("reasoning and visible output tokens remain separate and unavailable values stay null", async () => {
   const fake = adapter(8);
-  fake.execute = async () => {
+  fake.generate = async () => {
     fake.counts.execute += 1;
-    return { ok: true, raw: { output_text: "{}" }, usage: { input_tokens: 8, output_tokens: 4 }, completion_state: "completed", error_classification: null };
+    return { ok: true, raw: { output_text: "{}", usage: { input_tokens: 8, output_tokens: 4 }, status: "completed" } };
   };
   const result = await executeModelOperation({ profile: profile(), payload, directive: { ...directive, requested_reasoning_tokens: 6 }, mode: "execute", adapterRegistry: { openai: fake } as any });
 
