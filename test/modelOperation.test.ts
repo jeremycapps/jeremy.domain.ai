@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import test from "node:test";
-import { executeModelOperation, type DirectivePacket, type ProviderAdapter, type PromptPayload } from "../src/providers/modelOperation.js";
+import { executeModelOperation, type DataEgressDecision, type DirectivePacket, type ProviderAdapter, type PromptPayload } from "../src/providers/modelOperation.js";
 import { canonicalModelProfileIds, modelProfiles, type ModelProfile } from "../src/providers/modelProfiles.js";
 
 const profile = (provider: "openai" | "anthropic" | "google" = "openai"): ModelProfile => ({
@@ -80,12 +80,104 @@ test("profile selects provider/model/endpoints while payload stays semantic", as
   assert.deepEqual((fake.lastRequest?.directive as DirectivePacket).structured_output_schema, { type: "object" });
 });
 
+test("OpenAI request body carries directive structured-output schema", async () => {
+  const requests: Record<string, unknown>[] = [];
+  const originalFetch = globalThis.fetch;
+  const originalKey = process.env.OPENAI_API_KEY;
+  globalThis.fetch = async (_url, init) => {
+    requests.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
+    return new Response(JSON.stringify({ input_tokens: 10 }), { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+
+  try {
+    process.env.OPENAI_API_KEY = "test-key";
+    await executeModelOperation({ profile: profile("openai"), payload, directive, mode: "preflight" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalKey;
+  }
+
+  const format = (requests[0]?.text as { format?: unknown } | undefined)?.format as Record<string, unknown> | undefined;
+  assert.equal(format?.type, "json_schema");
+  assert.equal(format?.name, "structured_output");
+  assert.deepEqual(format?.schema, directive.structured_output_schema);
+});
+
 test("native token counting happens before execution and preflight never executes", async () => {
   const fake = adapter();
   const result = await executeModelOperation({ profile: profile(), payload, directive, mode: "preflight", adapterRegistry: { openai: fake } as any });
   assert.equal(result.admission_status, "eligible");
   assert.equal(fake.counts.count, 1);
   assert.equal(fake.counts.execute, 0);
+});
+
+test("private and restricted payloads are withheld before token counting", async () => {
+  for (const classification of ["private", "restricted"] as const) {
+    const fake = adapter();
+    const dataEgress: DataEgressDecision = {
+      status: "withheld",
+      classification,
+      purpose: "model_execution_boundary_smoke",
+      reason: `${classification} payloads are not permitted for this operation.`
+    };
+
+    const result = await executeModelOperation({ profile: profile(), payload, directive, mode: "execute", dataEgress, adapterRegistry: { openai: fake } as any });
+
+    assert.equal(result.receipt.execution_status, "withheld_data_egress");
+    assert.equal(result.provider_error_classification, "data_egress_withheld");
+    assert.equal(result.receipt.data_egress?.classification, classification);
+    assert.equal(fake.counts.count, 0);
+    assert.equal(fake.counts.execute, 0);
+    assert.equal(fake.lastRequest, undefined);
+  }
+});
+
+test("an admitted synthetic payload proceeds to token admission", async () => {
+  const fake = adapter();
+  const dataEgress: DataEgressDecision = {
+    status: "permitted",
+    classification: "synthetic",
+    purpose: "model_execution_boundary_smoke",
+    reason: "Synthetic fixture manifest permits this boundary smoke."
+  };
+
+  const result = await executeModelOperation({ profile: profile(), payload, directive, mode: "preflight", dataEgress, adapterRegistry: { openai: fake } as any });
+
+  assert.equal(result.admission_status, "eligible");
+  assert.equal(result.receipt.data_egress?.status, "permitted");
+  assert.equal(result.receipt.data_egress?.classification, "synthetic");
+  assert.equal(fake.counts.count, 1);
+  assert.equal(fake.counts.execute, 0);
+});
+
+test("data-egress withholding and token withholding stay distinct in the receipt", async () => {
+  const egressFake = adapter();
+  const dataEgress: DataEgressDecision = {
+    status: "withheld",
+    classification: "private",
+    purpose: "model_execution_boundary_smoke",
+    reason: "Private payload withheld before provider preflight."
+  };
+  const egress = await executeModelOperation({ profile: profile(), payload, directive, dataEgress, mode: "execute", adapterRegistry: { openai: egressFake } as any });
+  assert.equal(egress.receipt.execution_status, "withheld_data_egress");
+  assert.equal(egress.receipt.token_count_source, "unavailable");
+  assert.equal(egressFake.counts.count, 0);
+  assert.equal(egressFake.counts.execute, 0);
+
+  const tokenFake = adapter(101);
+  const token = await executeModelOperation({
+    profile: profile(),
+    payload,
+    directive,
+    dataEgress: { status: "permitted", classification: "synthetic", purpose: "model_execution_boundary_smoke", reason: "Synthetic fixture permitted." },
+    mode: "execute",
+    adapterRegistry: { openai: tokenFake } as any
+  });
+  assert.equal(token.receipt.execution_status, "withheld_context_limit");
+  assert.equal(token.receipt.data_egress?.status, "permitted");
+  assert.equal(tokenFake.counts.count, 1);
+  assert.equal(tokenFake.counts.execute, 0);
 });
 
 test("execution is withheld when token counting fails", async () => {

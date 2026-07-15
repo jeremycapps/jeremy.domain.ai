@@ -30,6 +30,13 @@ export interface DirectivePacket {
   bounded_retry_policy?: { max_attempts: number; retry_on: string[] };
 }
 
+export interface DataEgressDecision {
+  status: "permitted" | "withheld";
+  classification: "synthetic" | "public" | "private" | "restricted";
+  purpose: string;
+  reason: string;
+}
+
 export interface SerializedProviderRequest {
   url: string;
   init: RequestInit;
@@ -45,6 +52,7 @@ export interface ProviderAdapter {
 
 export type ModelExecutionStatus =
   | "admitted"
+  | "withheld_data_egress"
   | "withheld_context_limit"
   | "withheld_token_budget"
   | "withheld_rate_budget"
@@ -84,6 +92,7 @@ export interface ModelExecutionReceipt {
   normalized_artifact_ref: string | null;
   error_classification: string | null;
   cost_usd: number | null;
+  data_egress: DataEgressDecision | null;
 }
 
 export interface ModelOperationResult<TValue = unknown> extends ModelExecutionReceipt {
@@ -117,6 +126,7 @@ export interface ModelOperationInput<TPayload = unknown> {
   adapterRegistry?: Partial<Record<ModelProvider, ProviderAdapter>>;
   rawArtifactRef?: string | null;
   normalizedArtifactRef?: string | null;
+  dataEgress?: DataEgressDecision;
 }
 
 function requireKey(name: string, provider: string): string {
@@ -195,7 +205,8 @@ export function modelOperationRecord(result: ModelOperationResult) {
     execution_status: result.execution_status,
     latency_ms: result.latency_ms,
     cost_usd: result.cost_usd,
-    error_classification: result.error_classification
+    error_classification: result.error_classification,
+    data_egress: result.data_egress
   };
 }
 
@@ -203,6 +214,7 @@ class OpenAIAdapter implements ProviderAdapter {
   provider: ModelProvider = "openai";
   serialize(profile: ModelProfile, payload: PromptPayload, directive: DirectivePacket): SerializedProviderRequest {
     const body: Record<string, unknown> = { model: profile.model, input: promptText(payload, directive), max_output_tokens: directive.max_output_tokens };
+    if (directive.structured_output_schema) body.text = { format: { type: "json_schema", name: "structured_output", schema: directive.structured_output_schema, strict: false } };
     Object.assign(body, directive.execution_overrides ?? {});
     return { url: `https://api.openai.com${profile.endpoints.execute}`, init: { method: "POST", headers: { Authorization: `Bearer ${requireKey("OPENAI_API_KEY", "openai")}`, "Content-Type": "application/json" }, body: JSON.stringify(body) }, body };
   }
@@ -287,7 +299,7 @@ function executionStatusFromProvider(executed: { ok: boolean; completion_state?:
 }
 
 export async function executeModelOperation<TValue = unknown>(
-  input: (ModelOperationInput & { payload?: unknown }) | { profile: ModelProfile | string; payload: PromptPayload; directive: DirectivePacket; mode?: "preflight" | "execute"; remainingRateBudget?: number; adapterRegistry?: Partial<Record<ModelProvider, ProviderAdapter>>; rawArtifactRef?: string | null; normalizedArtifactRef?: string | null }
+  input: (ModelOperationInput & { payload?: unknown }) | { profile: ModelProfile | string; payload: PromptPayload; directive: DirectivePacket; mode?: "preflight" | "execute"; remainingRateBudget?: number; adapterRegistry?: Partial<Record<ModelProvider, ProviderAdapter>>; rawArtifactRef?: string | null; normalizedArtifactRef?: string | null; dataEgress?: DataEgressDecision }
 ): Promise<ModelOperationResult<TValue>> {
   const prompt = "prompt" in input ? input.prompt : input.payload;
   if (!prompt || typeof prompt !== "object" || !("operation" in prompt)) throw new Error("executeModelOperation requires a PromptPayload.");
@@ -335,6 +347,7 @@ export async function executeModelOperation<TValue = unknown>(
     normalized_artifact_ref: input.normalizedArtifactRef ?? null,
     error_classification: null,
     cost_usd: null,
+    data_egress: input.dataEgress ?? null,
     ...overrides
   });
 
@@ -366,6 +379,17 @@ export async function executeModelOperation<TValue = unknown>(
   if (!adapter) {
     const receipt = baseReceipt({ execution_status: "provider_error", error_classification: "provider_adapter_unavailable", stop_reason: "adapter_unavailable" });
     return resultFromReceipt(receipt);
+  }
+
+  if (input.dataEgress?.status === "withheld") {
+    const receipt = baseReceipt({ execution_status: "withheld_data_egress", error_classification: "data_egress_withheld", stop_reason: input.dataEgress.reason });
+    return resultFromReceipt(receipt, {
+      admission_status: "withheld",
+      provider_error_classification: "data_egress_withheld",
+      completion_state: "withheld_data_egress",
+      token_count: { status: "unavailable", error: "data_egress_withheld" },
+      native_request: {}
+    });
   }
 
   const request = adapter.serialize(profile, prompt as PromptPayload, directive);

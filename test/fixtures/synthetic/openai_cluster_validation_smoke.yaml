@@ -1,0 +1,236 @@
+schema_version: synthetic.openai_cluster_validation_smoke.v1
+manifest_ref: test/fixtures/synthetic/openai_cluster_validation_smoke_manifest.yaml
+candidate_id: candidate_example
+role_id: role_example
+cluster:
+  id: cluster_example_delivery
+  label: Example Delivery Coordination
+  requirement_refs:
+    - requirement_example_001
+    - requirement_example_002
+requirements:
+  - id: requirement_example_001
+    title: Example delivery planning
+    text: Coordinate a small sample work plan with clear milestones and owners.
+  - id: requirement_example_002
+    title: Example stakeholder update
+    text: Provide concise status updates for a fictional internal tool.
+evidence_contexts:
+  - id: evidence_example_001
+    text: In a synthetic exercise, the example candidate organized a short task list and assigned owners.
+  - id: evidence_example_002
+    text: In a synthetic exercise, the example candidate drafted a short status note with risks and next steps.
+  - id: evidence_example_003
+    text: In a synthetic exercise, the example candidate reviewed sample feedback and identified one follow-up action.
+capabilities:
+  - id: capability_example_001
+    requirement_ref: requirement_example_001
+    statement: The example candidate can arrange simple delivery tasks into a milestone plan.
+    evidence_refs:
+      - evidence_example_001
+    support: supported
+    confidence: high
+    generated_by:
+      provider: synthetic
+      model: deterministic-fixture
+      prompt_version: synthetic.cluster.capability.v1
+  - id: capability_example_002
+    requirement_ref: requirement_example_002
+    statement: The example candidate can summarize delivery status with risks and next steps.
+    evidence_refs:
+      - evidence_example_002
+    support: supported
+    confidence: medium
+    generated_by:
+      provider: synthetic
+      model: deterministic-fixture
+      prompt_version: synthetic.cluster.capability.v1
+  - id: capability_example_003
+    requirement_ref: requirement_example_001
+    statement: The example candidate can connect sample feedback to a follow-up delivery action.
+    evidence_refs:
+      - evidence_example_003
+    support: adjacent
+    confidence: medium
+    generated_by:
+      provider: synthetic
+      model: deterministic-fixture
+      prompt_version: synthetic.cluster.capability.v1
+  - id: capability_example_004
+    requirement_ref: requirement_example_002
+    statement: The example candidate can independently manage a complex enterprise rollout.
+    evidence_refs:
+      - evidence_example_001
+    support: unsupported
+    confidence: low
+    generated_by:
+      provider: synthetic
+      model: deterministic-fixture
+      prompt_version: synthetic.cluster.capability.v1
+evidence_policy:
+  permitted_evidence_context_ids:
+    - evidence_example_001
+    - evidence_example_002
+    - evidence_example_003
+  unresolved_context_ids: []
+  support_ceilings:
+    - context_ref: evidence_example_003
+      support_ceiling_when_used_alone: adjacent
+      rule: synthetic adjacent-only example
+      evidence_status: selected_resolved
+  allowed_capability_ids:
+    - capability_example_001
+    - capability_example_002
+    - capability_example_003
+    - capability_example_004
+  allowed_requirement_ids:
+    - requirement_example_001
+    - requirement_example_002
+  allowed_evidence_ids:
+    - evidence_example_001
+    - evidence_example_002
+    - evidence_example_003
+generation_provenance:
+  - capability_id: capability_example_001
+    provider: synthetic
+    model: deterministic-fixture
+    prompt_version: synthetic.cluster.capability.v1
+  - capability_id: capability_example_002
+    provider: synthetic
+    model: deterministic-fixture
+    prompt_version: synthetic.cluster.capability.v1
+  - capability_id: capability_example_003
+    provider: synthetic
+    model: deterministic-fixture
+    prompt_version: synthetic.cluster.capability.v1
+  - capability_id: capability_example_004
+    provider: synthetic
+    model: deterministic-fixture
+    prompt_version: synthetic.cluster.capability.v1
+prompt:
+  operation: cluster_capability_validation
+  prompt_version: validate.openai.cluster.v1
+  schema_version: corus.openai_cluster_validation.v1
+  instructions:
+    - Validate this single capability cluster. Return one JSON object only.
+    - Required shape: {cluster_id,status,validated_capability_ids,rejected_capability_ids,author_review_capability_ids,findings,proposed_support_corrections,evidence_reference_findings,unsupported_claim_findings}.
+    - Do not introduce capability, requirement, or evidence IDs. Do not raise any capability above an applicable support ceiling.
+    - Unsupported claims must be rejected or sent to author_review.
+output_schema:
+  type: object
+  additionalProperties: false
+  required:
+    - cluster_id
+    - status
+    - validated_capability_ids
+    - rejected_capability_ids
+    - author_review_capability_ids
+    - findings
+    - proposed_support_corrections
+    - evidence_reference_findings
+    - unsupported_claim_findings
+  properties:
+    cluster_id:
+      type: string
+      const: cluster_example_delivery
+    status:
+      type: string
+      enum:
+        - passed
+        - revise
+        - architect_required
+        - failed
+    validated_capability_ids:
+      type: array
+      items:
+        type: string
+        enum:
+          - capability_example_001
+          - capability_example_002
+          - capability_example_003
+          - capability_example_004
+    rejected_capability_ids:
+      type: array
+      items:
+        type: string
+        enum:
+          - capability_example_001
+          - capability_example_002
+          - capability_example_003
+          - capability_example_004
+    author_review_capability_ids:
+      type: array
+      items:
+        type: string
+        enum:
+          - capability_example_001
+          - capability_example_002
+          - capability_example_003
+          - capability_example_004
+    findings:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required:
+          - message
+        properties:
+          capability_id:
+            type: string
+          requirement_ref:
+            type: string
+          evidence_ref:
+            type: string
+          severity:
+            type: string
+          type:
+            type: string
+          message:
+            type: string
+    proposed_support_corrections:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required:
+          - capability_id
+          - from
+          - to
+          - rationale
+        properties:
+          capability_id:
+            type: string
+          from:
+            type: string
+          to:
+            type: string
+          rationale:
+            type: string
+    evidence_reference_findings:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required:
+          - capability_id
+          - message
+        properties:
+          capability_id:
+            type: string
+          evidence_ref:
+            type: string
+          message:
+            type: string
+    unsupported_claim_findings:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required:
+          - capability_id
+          - message
+        properties:
+          capability_id:
+            type: string
+          message:
+            type: string

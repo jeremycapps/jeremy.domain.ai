@@ -1,0 +1,7 @@
+source: synthetic
+contains_personal_data: false
+contains_private_employer_data: false
+derived_from_prophet_artifacts: false
+safe_for_external_provider_test: true
+approved_purpose: model_execution_boundary_smoke
+classification: synthetic
