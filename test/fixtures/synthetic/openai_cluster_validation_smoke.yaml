@@ -112,10 +112,10 @@ prompt:
   prompt_version: validate.openai.cluster.v1
   schema_version: corus.openai_cluster_validation.v1
   instructions:
-    - Validate this single capability cluster. Return one JSON object only.
-    - Required shape: {cluster_id,status,validated_capability_ids,rejected_capability_ids,author_review_capability_ids,findings,proposed_support_corrections,evidence_reference_findings,unsupported_claim_findings}.
-    - Do not introduce capability, requirement, or evidence IDs. Do not raise any capability above an applicable support ceiling.
-    - Unsupported claims must be rejected or sent to author_review.
+    - "Validate this single capability cluster. Return one JSON object only."
+    - "Required shape: {cluster_id,status,validated_capability_ids,rejected_capability_ids,author_review_capability_ids,findings,proposed_support_corrections,evidence_reference_findings,unsupported_claim_findings}."
+    - "Do not introduce capability, requirement, or evidence IDs. Do not raise any capability above an applicable support ceiling."
+    - "Unsupported claims must be rejected or sent to author_review."
 output_schema:
   type: object
   additionalProperties: false
