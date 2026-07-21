@@ -482,7 +482,58 @@ export interface CapabilityAnalysisResponse {
   };
 }
 
-export type CorusProgramStatus = "ready" | "replayable" | "blocked";
+export type CorusProgramStatus =
+  | "ready"
+  | "completed_valid_output"
+  | "passed"
+  | "revise"
+  | "failed"
+  | "architect_required"
+  | "recovery_failed"
+  | "awaiting_author"
+  | "admitted"
+  | "blocked"
+  | "replayable";
+
+export interface CorusProcessDefinition {
+  id: string;
+  required_inputs: string[];
+  expected_outputs: string[];
+  allowed_start_statuses: CorusProgramStatus[];
+  allowed_return_statuses: CorusProgramStatus[];
+  required_artifact_refs: string[];
+  transitions: Record<string, string | null>;
+}
+
+export interface CorusPlannedAction {
+  program_id: string;
+  process_id: string;
+  operation: string;
+  target: string;
+  reason: string;
+  required_input_refs: string[];
+  expected_output_contract: {
+    allowed_return_statuses: CorusProgramStatus[];
+    required_artifact_refs: string[];
+  };
+  execution_required: boolean;
+}
+
+export interface CorusExecutionReceipt {
+  id: string;
+  provider_calls_made: number;
+}
+
+export interface CorusTransitionEvent {
+  process_id: string;
+  prior_status: CorusProgramStatus;
+  returned_status: CorusProgramStatus;
+  artifact_refs: Record<string, string>;
+  occurred_at: string;
+  actor_ref: string;
+  provider_calls_made: number;
+  execution_receipts?: CorusExecutionReceipt[];
+}
 
 export interface CorusProgramObjectSchemas {
   schema_version: "corus.program_object_schemas.v1";
@@ -492,6 +543,8 @@ export interface CorusProgramObjectSchemas {
     capability_validation: "corus.validation.v1";
     capability_projection: "corus.projection.v1";
     generation_record: "corus.generation_record.v1";
+    process_definition: "corus.process_definition.v1";
+    transition_event: "corus.transition_event.v1";
   };
 }
 
@@ -505,6 +558,8 @@ export interface CorusProgramState {
     target: string;
     baseline?: string;
   };
+  current_process_id: string;
+  process_status: Record<string, CorusProgramStatus>;
   contexts: {
     subject: Context;
     target: Context;
@@ -516,8 +571,9 @@ export interface CorusProgramState {
   artifact_dir?: string;
   handoff_failure?: HandoffFailure;
   failure_analysis?: FailureAnalysis;
+  history: CorusTransitionEvent[];
   replay: {
-    provider_calls_made: 0;
+    provider_calls_made: number;
     validation_rules: string[];
   };
 }
@@ -528,6 +584,7 @@ export interface CorusProgram {
   objective: string;
   constraints: string[];
   object_schemas: CorusProgramObjectSchemas;
+  process_definitions: CorusProcessDefinition[];
   state: CorusProgramState;
 }
 

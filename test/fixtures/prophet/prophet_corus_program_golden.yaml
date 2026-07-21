@@ -13,15 +13,114 @@ object_schemas:
     capability_validation: corus.validation.v1
     capability_projection: corus.projection.v1
     generation_record: corus.generation_record.v1
+    process_definition: corus.process_definition.v1
+    transition_event: corus.transition_event.v1
+process_definitions:
+  - id: structured_context_preservation
+    required_inputs:
+      - subject_source
+      - target_source
+    expected_outputs:
+      - subject_context
+      - target_context
+    allowed_start_statuses:
+      - ready
+    allowed_return_statuses:
+      - completed_valid_output
+    required_artifact_refs:
+      - subject_context
+      - target_context
+    transitions:
+      completed_valid_output: capability_reduction
+  - id: capability_reduction
+    required_inputs:
+      - subject_context
+      - target_context
+    expected_outputs:
+      - capability_reduction
+    allowed_start_statuses:
+      - completed_valid_output
+    allowed_return_statuses:
+      - completed_valid_output
+      - failed
+      - architect_required
+    required_artifact_refs:
+      - capability_reduction
+    transitions:
+      completed_valid_output: capability_validation
+      failed: null
+      architect_required: null
+  - id: capability_validation
+    required_inputs:
+      - capability_reduction
+      - subject_context
+      - target_context
+    expected_outputs:
+      - capability_validation
+    allowed_start_statuses:
+      - completed_valid_output
+    allowed_return_statuses:
+      - passed
+      - revise
+      - failed
+      - architect_required
+    required_artifact_refs:
+      - capability_validation
+    transitions:
+      passed: projection
+      revise: capability_reduction
+      failed: null
+      architect_required: null
+  - id: projection
+    required_inputs:
+      - capability_validation
+      - capability_reduction
+    expected_outputs:
+      - capability_projection
+    allowed_start_statuses:
+      - passed
+    allowed_return_statuses:
+      - completed_valid_output
+    required_artifact_refs:
+      - capability_projection
+    transitions:
+      completed_valid_output: capability_admission
+  - id: capability_admission
+    required_inputs:
+      - capability_projection
+      - capability_validation
+      - baseline
+    expected_outputs:
+      - author_decision
+    allowed_start_statuses:
+      - completed_valid_output
+      - awaiting_author
+    allowed_return_statuses:
+      - awaiting_author
+      - admitted
+      - blocked
+    required_artifact_refs:
+      - author_review
+    transitions:
+      awaiting_author: capability_admission
+      admitted: null
+      blocked: null
 state:
   schema_version: corus.program_state.v1
-  status: replayable
+  status: awaiting_author
   run_id: prophet-fixture-golden
   mode: fixture
   source_refs:
     subject: test/fixtures/prophet/jeremy_corus.yaml
     target: test/fixtures/prophet/prophet_senior_product_manager.yaml
     baseline: test/fixtures/prophet/jeremy_prophet_senior_product_manager_capabilities.yaml
+  current_process_id: capability_admission
+  process_status:
+    structured_context_preservation: completed_valid_output
+    capability_reduction: completed_valid_output
+    capability_validation: passed
+    projection: completed_valid_output
+    capability_admission: awaiting_author
   contexts:
     subject:
       id: jeremy_capps
@@ -112,6 +211,48 @@ state:
         latency_ms: 0
         measurement_source: measured
   artifact_dir: test/fixtures/prophet
+  history:
+    - process_id: structured_context_preservation
+      prior_status: ready
+      returned_status: completed_valid_output
+      artifact_refs:
+        subject_context: test/fixtures/prophet/prophet_corus_program_golden.yaml#subject
+        target_context: test/fixtures/prophet/prophet_corus_program_golden.yaml#target
+      occurred_at: "2026-07-21T00:00:00.000Z"
+      actor_ref: corus.runtime
+      provider_calls_made: 0
+    - process_id: capability_reduction
+      prior_status: completed_valid_output
+      returned_status: completed_valid_output
+      artifact_refs:
+        capability_reduction: test/fixtures/prophet/prophet_corus_program_golden.yaml#reduction
+      occurred_at: "2026-07-21T00:00:01.000Z"
+      actor_ref: corus.runtime
+      provider_calls_made: 0
+    - process_id: capability_validation
+      prior_status: completed_valid_output
+      returned_status: passed
+      artifact_refs:
+        capability_validation: test/fixtures/prophet/prophet_corus_program_golden.yaml#validation
+      occurred_at: "2026-07-21T00:00:02.000Z"
+      actor_ref: corus.runtime
+      provider_calls_made: 0
+    - process_id: projection
+      prior_status: passed
+      returned_status: completed_valid_output
+      artifact_refs:
+        capability_projection: test/fixtures/prophet/prophet_corus_program_golden.yaml#projection
+      occurred_at: "2026-07-21T00:00:03.000Z"
+      actor_ref: corus.runtime
+      provider_calls_made: 0
+    - process_id: capability_admission
+      prior_status: completed_valid_output
+      returned_status: awaiting_author
+      artifact_refs:
+        author_review: test/fixtures/prophet/prophet_corus_program_golden.yaml#author-review
+      occurred_at: "2026-07-21T00:00:04.000Z"
+      actor_ref: corus.runtime
+      provider_calls_made: 0
   replay:
     provider_calls_made: 0
     validation_rules:

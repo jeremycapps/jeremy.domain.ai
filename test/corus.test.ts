@@ -24,7 +24,7 @@ import { runCapabilityAnalysis, structuredProviderError } from "../src/lib/corus
 import { resumeFailureReroutingFromCheckpoint } from "../src/lib/corusCheckpointResume.js";
 import { runAttempt2AlignmentReplay } from "../src/lib/corusAlignmentReplay.js";
 import { validateProjectionNoInvention } from "../src/lib/corusProjection.js";
-import { buildCorusProgramFromRun, loadCorusProgram, replayCorusProgram } from "../src/lib/corusProgram.js";
+import { applyCorusTransition, buildCorusProgramFromRun, loadCorusProgram, planNextCorusAction, replayCorusProgram, replayCorusProgramState, validateCorusProgram } from "../src/lib/corusProgram.js";
 import { classifyProviderFailure } from "../src/lib/providerFailureClassification.js";
 import { AnthropicCapabilityReductionProvider, capabilityReductionJsonSchema, classifyAnthropicCapabilityReductionFailure, providerReadiness } from "../src/providers/liveProviders.js";
 import { metricsFromUsage, parseJsonObject, textFromOpenAIResponse } from "../src/providers/providerUtils.js";
