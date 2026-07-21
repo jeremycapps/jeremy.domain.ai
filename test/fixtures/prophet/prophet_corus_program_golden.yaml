@@ -1,0 +1,122 @@
+schema_version: corus.program.v1
+program_id: prophet-fixture-program-golden
+objective: Represent and replay the existing Prophet capability proof through recoverable Corus program state.
+constraints:
+  - Do not make live provider calls during replay.
+  - Preserve the existing Prophet fixture inputs, provider boundaries, artifacts, and validation rules.
+  - Do not redesign provider adapters, introduce LangGraph, add semantic retrieval, build UI, or extract a separate Domain package.
+object_schemas:
+  schema_version: corus.program_object_schemas.v1
+  objects:
+    context: corus.context.v1
+    capability_reduction: corus.capability_reduction.v1
+    capability_validation: corus.validation.v1
+    capability_projection: corus.projection.v1
+    generation_record: corus.generation_record.v1
+state:
+  schema_version: corus.program_state.v1
+  status: replayable
+  run_id: prophet-fixture-golden
+  mode: fixture
+  source_refs:
+    subject: test/fixtures/prophet/jeremy_corus.yaml
+    target: test/fixtures/prophet/prophet_senior_product_manager.yaml
+    baseline: test/fixtures/prophet/jeremy_prophet_senior_product_manager_capabilities.yaml
+  contexts:
+    subject:
+      id: jeremy_capps
+      kind: subject
+      label: Jeremy Capps
+      sources:
+        - test/fixtures/prophet/jeremy_corus.yaml
+      content:
+        contexts:
+          - id: jeremy_aroko_operational_source_of_truth
+      generation:
+        operation: contextualize
+        provider: fixture
+        model: structured-context-ledger
+        prompt_version: contextualize.preserve-ledger.v1
+        input_refs:
+          - test/fixtures/prophet/jeremy_corus.yaml
+        schema_version: corus.context.v1
+        created_at: "2026-07-21T00:00:00.000Z"
+    target:
+      id: prophet_senior_product_manager_ai_foundry
+      kind: target
+      label: Senior Product Manager, AI Foundry
+      sources:
+        - test/fixtures/prophet/prophet_senior_product_manager.yaml
+      content:
+        contexts:
+          - id: prophet_maia_product_execution
+      generation:
+        operation: contextualize
+        provider: fixture
+        model: structured-context-ledger
+        prompt_version: contextualize.preserve-ledger.v1
+        input_refs:
+          - test/fixtures/prophet/prophet_senior_product_manager.yaml
+        schema_version: corus.context.v1
+        created_at: "2026-07-21T00:00:00.000Z"
+  reduction:
+    reducer: capabilities
+    inputs:
+      subject: jeremy_capps
+      target: prophet_senior_product_manager_ai_foundry
+    capabilities:
+      - id: cap_product_execution
+        requirement_ref: prophet_maia_product_execution
+        statement: Translate ambiguous product ambition into shipped, testable capability.
+        evidence_refs:
+          - jeremy_aroko_operational_source_of_truth
+        support: supported
+        confidence: high
+        generated_by:
+          provider: anthropic
+          model: mock-claude-reducer
+          prompt_version: reduce.mock.v1
+  validation:
+    status: passed
+    findings: []
+    validated_capability_ids:
+      - cap_product_execution
+    rejected_capability_ids: []
+  projection:
+    kind: capability_assessment
+    format: markdown
+    content: |
+      # Capability Assessment
+
+      ## cap_product_execution
+      Translate ambiguous product ambition into shipped, testable capability.
+    capability_ids:
+      - cap_product_execution
+  generation_records:
+    - id: prophet-fixture-golden-projection
+      type: projection
+      created_at: "2026-07-21T00:00:00.000Z"
+      input_refs:
+        - test/fixtures/prophet/prophet_corus_program_golden.yaml#validation
+        - test/fixtures/prophet/prophet_corus_program_golden.yaml#reduction
+      output_ref: test/fixtures/prophet/prophet_corus_program_golden.yaml#projection
+      provider: codex
+      model: deterministic-projection
+      prompt_version: projection.v1
+      schema_version: corus.projection.v1
+      validation_status: passed
+      metrics:
+        input_tokens: null
+        output_tokens: null
+        estimated_cost_usd: null
+        latency_ms: 0
+        measurement_source: measured
+  artifact_dir: test/fixtures/prophet
+  replay:
+    provider_calls_made: 0
+    validation_rules:
+      - validateContextOutput
+      - validateReductionOutput
+      - validateReductionReferences
+      - validateCapabilityValidationOutput
+      - validateProjectionNoInvention

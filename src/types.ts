@@ -482,6 +482,55 @@ export interface CapabilityAnalysisResponse {
   };
 }
 
+export type CorusProgramStatus = "ready" | "replayable" | "blocked";
+
+export interface CorusProgramObjectSchemas {
+  schema_version: "corus.program_object_schemas.v1";
+  objects: {
+    context: "corus.context.v1";
+    capability_reduction: "corus.capability_reduction.v1";
+    capability_validation: "corus.validation.v1";
+    capability_projection: "corus.projection.v1";
+    generation_record: "corus.generation_record.v1";
+  };
+}
+
+export interface CorusProgramState {
+  schema_version: "corus.program_state.v1";
+  status: CorusProgramStatus;
+  run_id: string;
+  mode: CorusExecutionMode;
+  source_refs: {
+    subject: string;
+    target: string;
+    baseline?: string;
+  };
+  contexts: {
+    subject: Context;
+    target: Context;
+  };
+  reduction: CapabilityReduction;
+  validation: CapabilityValidation;
+  projection: CapabilityProjection | null;
+  generation_records: StageGenerationRecord[];
+  artifact_dir?: string;
+  handoff_failure?: HandoffFailure;
+  failure_analysis?: FailureAnalysis;
+  replay: {
+    provider_calls_made: 0;
+    validation_rules: string[];
+  };
+}
+
+export interface CorusProgram {
+  schema_version: "corus.program.v1";
+  program_id: string;
+  objective: string;
+  constraints: string[];
+  object_schemas: CorusProgramObjectSchemas;
+  state: CorusProgramState;
+}
+
 export interface ProviderReadiness {
   mode: CorusExecutionMode;
   ready: boolean;

@@ -24,6 +24,7 @@ import { runCapabilityAnalysis, structuredProviderError } from "../src/lib/corus
 import { resumeFailureReroutingFromCheckpoint } from "../src/lib/corusCheckpointResume.js";
 import { runAttempt2AlignmentReplay } from "../src/lib/corusAlignmentReplay.js";
 import { validateProjectionNoInvention } from "../src/lib/corusProjection.js";
+import { buildCorusProgramFromRun, loadCorusProgram, replayCorusProgram } from "../src/lib/corusProgram.js";
 import { classifyProviderFailure } from "../src/lib/providerFailureClassification.js";
 import { AnthropicCapabilityReductionProvider, capabilityReductionJsonSchema, classifyAnthropicCapabilityReductionFailure, providerReadiness } from "../src/providers/liveProviders.js";
 import { metricsFromUsage, parseJsonObject, textFromOpenAIResponse } from "../src/providers/providerUtils.js";
@@ -1200,4 +1201,45 @@ test("Prophet fixture can produce a baseline comparison report without live cred
   const report = await runProphetFixtureEvaluation(process.cwd());
   assert.equal(report.evaluation.fixture, "prophet");
   assert.equal(typeof report.evaluation.quality.capability_recall, "number");
+});
+
+test("Prophet fixture run can be represented and replayed as a CorusProgram", async () => {
+  const root = await tempRoot();
+  await fs.mkdir(path.join(root, "test", "fixtures"), { recursive: true });
+  await fs.cp(path.join(process.cwd(), "test", "fixtures", "prophet"), path.join(root, "test", "fixtures", "prophet"), { recursive: true });
+
+  const request = {
+    subject_source: "test/fixtures/prophet/jeremy_corus.yaml",
+    target_source: "test/fixtures/prophet/prophet_senior_product_manager.yaml",
+    projection: "capability_assessment" as const,
+    mode: "fixture" as const
+  };
+  const run = await runCapabilityAnalysis(request, { root });
+  const program = buildCorusProgramFromRun({
+    request,
+    run,
+    programId: "prophet-fixture-program-test",
+    baselineRef: "test/fixtures/prophet/jeremy_prophet_senior_product_manager_capabilities.yaml"
+  });
+  const replayed = replayCorusProgram(program);
+
+  assert.equal(program.schema_version, "corus.program.v1");
+  assert.equal(program.object_schemas.objects.capability_reduction, "corus.capability_reduction.v1");
+  assert.equal(program.state.replay.provider_calls_made, 0);
+  assert.equal(replayed.status, run.status);
+  assert.deepEqual(replayed.capabilities, run.capabilities);
+  assert.deepEqual(replayed.validation, run.validation);
+  assert.deepEqual(replayed.projection, run.projection);
+});
+
+test("golden Prophet CorusProgram fixture replays with zero provider calls", async () => {
+  const program = await loadCorusProgram(path.join(process.cwd(), "test", "fixtures", "prophet", "prophet_corus_program_golden.yaml"));
+  const replayed = replayCorusProgram(program);
+
+  assert.equal(program.state.mode, "fixture");
+  assert.equal(program.state.source_refs.target, "test/fixtures/prophet/prophet_senior_product_manager.yaml");
+  assert.equal(program.state.source_refs.baseline, "test/fixtures/prophet/jeremy_prophet_senior_product_manager_capabilities.yaml");
+  assert.equal(program.state.replay.provider_calls_made, 0);
+  assert.equal(replayed.status, "passed");
+  assert.deepEqual(replayed.projection?.capability_ids, ["cap_product_execution"]);
 });
