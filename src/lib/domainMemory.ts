@@ -85,6 +85,8 @@ export interface ProgramEventMemoryInput<TEvent> {
   id: string;
   program_ref: string;
   schema_version: string;
+  ordinal: number;
+  parent_event_ref: string | null;
   event: TEvent;
   actor_ref: string;
   occurred_at: string;
@@ -95,12 +97,18 @@ export interface ProgramEventMemoryInput<TEvent> {
   source_refs?: string[];
 }
 
+export interface EventCursor {
+  ordinal: number;
+  event_ref: string;
+}
+
 export interface CheckpointInput<TProgramState> {
   id?: string;
   program_ref: string;
   schema_version: string;
   state: TProgramState;
   event_refs: string[];
+  event_cursor: EventCursor | null;
   admitted_record_refs: string[];
   unresolved_proposal_refs: string[];
   required_record_refs?: string[];
@@ -172,6 +180,7 @@ interface StoredCheckpoint<TProgramState> {
   version: number;
   state: TProgramState;
   event_refs: string[];
+  event_cursor: EventCursor | null;
   admitted_record_refs: string[];
   unresolved_proposal_refs: string[];
   required_record_refs: string[];
@@ -377,6 +386,72 @@ export class FilesystemDomainMemory<TProgramState, TProgramEvent, TNextAction = 
     return record;
   }
 
+  private eventInput(record: StoredMemoryRecord): ProgramEventMemoryInput<unknown> {
+    if (record.ref.kind !== "program_event") throw new Error(`Memory record ${record.ref.id} must be kind program_event.`);
+    const event = record.content as ProgramEventMemoryInput<unknown>;
+    if (!event || event.id !== record.ref.id || event.program_ref !== record.ref.program_ref) {
+      throw new Error(`Program event ${record.ref.id} has invalid stream identity.`);
+    }
+    if (!Number.isInteger(event.ordinal) || event.ordinal < 1) {
+      throw new Error(`Program event ${record.ref.id} must have a positive monotonic ordinal.`);
+    }
+    if (!(event.parent_event_ref === null || typeof event.parent_event_ref === "string")) {
+      throw new Error(`Program event ${record.ref.id} has an invalid parent_event_ref.`);
+    }
+    if (event.ordinal === 1 && event.parent_event_ref !== null) {
+      throw new Error(`First Program event ${record.ref.id} must not have a parent.`);
+    }
+    if (event.ordinal > 1 && !event.parent_event_ref) {
+      throw new Error(`Program event ${record.ref.id} is missing its parent event.`);
+    }
+    return event;
+  }
+
+  private async programEventRecords(programId: string): Promise<StoredMemoryRecord[]> {
+    const manifest = await this.readManifest(programId);
+    const records: StoredMemoryRecord[] = [];
+    for (const entry of manifest.records.filter((item) => item.ref.kind === "program_event")) {
+      const record = await this.read(entry.ref);
+      this.eventInput(record);
+      records.push(record);
+    }
+    return records;
+  }
+
+  private async verifyCheckpointEventChain(
+    programId: string,
+    eventRefs: string[],
+    cursor: EventCursor | null
+  ): Promise<StoredMemoryRecord[]> {
+    if (eventRefs.length === 0) {
+      if (cursor !== null) throw new Error("An empty checkpoint event stream must use a null cursor.");
+      return [];
+    }
+    if (!cursor || !Number.isInteger(cursor.ordinal) || cursor.ordinal < 1 || typeof cursor.event_ref !== "string") {
+      throw new Error("A nonempty checkpoint event stream requires a valid event cursor.");
+    }
+    if (new Set(eventRefs).size !== eventRefs.length) throw new Error("Checkpoint event_refs contain duplicate events.");
+    const records: StoredMemoryRecord[] = [];
+    let parentEventRef: string | null = null;
+    for (let index = 0; index < eventRefs.length; index += 1) {
+      const record = await this.requireRecord(programId, eventRefs[index], "program_event");
+      const event = this.eventInput(record);
+      const expectedOrdinal = index + 1;
+      if (event.ordinal !== expectedOrdinal) {
+        throw new Error(`Checkpoint Program event stream has a sequence gap at ordinal ${expectedOrdinal}.`);
+      }
+      if (event.parent_event_ref !== parentEventRef) {
+        throw new Error(`Checkpoint Program event ${event.id} does not descend from ${parentEventRef ?? "the stream root"}.`);
+      }
+      records.push(record);
+      parentEventRef = record.ref.id;
+    }
+    if (cursor.ordinal !== records.length || cursor.event_ref !== records.at(-1)!.ref.id) {
+      throw new Error("Checkpoint event cursor does not identify the verified tail event.");
+    }
+    return records;
+  }
+
   private async verifyAdmission(programId: string, record: StoredMemoryRecord): Promise<void> {
     if (record.ref.kind !== "admitted_product") throw new Error(`Memory record ${record.ref.id} must be kind admitted_product.`);
     const admission = record.content as {
@@ -521,6 +596,30 @@ export class FilesystemDomainMemory<TProgramState, TProgramEvent, TNextAction = 
     const input = event as unknown as ProgramEventMemoryInput<unknown>;
     assertActor(input.actor_ref, "Program event actor_ref");
     assertTimestamp(input.occurred_at, "Program event occurred_at");
+    assertSafeId(input.program_ref, "Program id");
+    assertSafeId(input.id, "Record id");
+    if (!Number.isInteger(input.ordinal) || input.ordinal < 1) throw new Error("Program event ordinal must be a positive integer.");
+    if (input.ordinal === 1 && input.parent_event_ref !== null) throw new Error("The first Program event must have a null parent_event_ref.");
+    if (input.ordinal > 1 && (!input.parent_event_ref || typeof input.parent_event_ref !== "string")) {
+      throw new Error(`Program event ordinal ${input.ordinal} requires a parent_event_ref.`);
+    }
+    const existingEvents = await this.programEventRecords(input.program_ref);
+    for (const record of existingEvents) {
+      const existing = this.eventInput(record);
+      if (existing.ordinal === input.ordinal && existing.id !== input.id) {
+        throw new Error(`Program event stream has duplicate ordinal ${input.ordinal}.`);
+      }
+      if (input.parent_event_ref && existing.parent_event_ref === input.parent_event_ref && existing.id !== input.id) {
+        throw new Error(`Program event stream forks from parent ${input.parent_event_ref}.`);
+      }
+    }
+    if (input.ordinal > 1) {
+      const parentRecord = await this.requireRecord(input.program_ref, input.parent_event_ref!, "program_event");
+      const parent = this.eventInput(parentRecord);
+      if (parent.ordinal !== input.ordinal - 1) {
+        throw new Error(`Program event ${input.id} creates a sequence gap after parent ${parent.id}.`);
+      }
+    }
     return this.store(
       {
         id: input.id,
@@ -530,7 +629,7 @@ export class FilesystemDomainMemory<TProgramState, TProgramEvent, TNextAction = 
         created_at: input.created_at,
         created_by: input.created_by,
         status: input.status,
-        metadata: input.metadata,
+        metadata: { ...input.metadata, event_ordinal: input.ordinal, parent_event_ref: input.parent_event_ref },
         source_refs: input.source_refs
       },
       "program_event"
@@ -544,7 +643,7 @@ export class FilesystemDomainMemory<TProgramState, TProgramEvent, TNextAction = 
     const manifest = await this.readManifest(input.program_ref);
     const version = manifest.records.filter((entry) => entry.ref.kind === "checkpoint").length + 1;
     const id = input.id ?? `checkpoint-${String(version).padStart(6, "0")}`;
-    for (const eventRef of input.event_refs) await this.requireRecord(input.program_ref, eventRef, "program_event");
+    await this.verifyCheckpointEventChain(input.program_ref, input.event_refs, input.event_cursor);
     for (const admissionRef of input.admitted_record_refs) await this.requireRecord(input.program_ref, admissionRef, "admitted_product");
     for (const proposalRef of input.unresolved_proposal_refs) await this.requireRecord(input.program_ref, proposalRef, "proposal");
     for (const requiredRef of input.required_record_refs ?? []) await this.requireRecord(input.program_ref, requiredRef);
@@ -557,6 +656,7 @@ export class FilesystemDomainMemory<TProgramState, TProgramEvent, TNextAction = 
           version,
           state: input.state,
           event_refs: input.event_refs,
+          event_cursor: input.event_cursor,
           admitted_record_refs: input.admitted_record_refs,
           unresolved_proposal_refs: input.unresolved_proposal_refs,
           required_record_refs: input.required_record_refs ?? []
@@ -604,18 +704,14 @@ export class FilesystemDomainMemory<TProgramState, TProgramEvent, TNextAction = 
     const checkpointRecord = await this.read(pointer.checkpoint_ref);
     if (checkpointRecord.ref.kind !== "checkpoint") throw new Error(`Current checkpoint for ${programId} is not a checkpoint record.`);
     const checkpoint = checkpointRecord.content as StoredCheckpoint<unknown>;
-    if (!checkpoint || !Number.isInteger(checkpoint.version) || !Array.isArray(checkpoint.event_refs)) {
+    if (!checkpoint || !Number.isInteger(checkpoint.version) || !Array.isArray(checkpoint.event_refs) || !(checkpoint.event_cursor === null || typeof checkpoint.event_cursor === "object")) {
       throw new Error(`Checkpoint ${checkpointRecord.ref.id} has invalid content.`);
     }
     const verified = new Set<string>([checkpointRecord.ref.id]);
-    const checkpointEvents: TProgramEvent[] = [];
-    const replayedEventRefs: MemoryRecordRef[] = [];
-    for (const eventId of checkpoint.event_refs) {
-      const record = await this.requireRecord(programId, eventId, "program_event");
-      checkpointEvents.push(record.content as TProgramEvent);
-      replayedEventRefs.push(record.ref);
-      verified.add(record.ref.id);
-    }
+    const checkpointEventRecords = await this.verifyCheckpointEventChain(programId, checkpoint.event_refs, checkpoint.event_cursor);
+    const checkpointEvents = checkpointEventRecords.map((record) => record.content as TProgramEvent);
+    const replayedEventRefs = checkpointEventRecords.map((record) => record.ref);
+    for (const record of checkpointEventRecords) verified.add(record.ref.id);
     for (const recordId of checkpoint.required_record_refs ?? []) {
       const record = await this.requireRecord(programId, recordId);
       verified.add(record.ref.id);
@@ -634,16 +730,33 @@ export class FilesystemDomainMemory<TProgramState, TProgramEvent, TNextAction = 
       verified.add(record.ref.id);
     }
     let recoveredState = this.recoveryPolicy.validateCheckpoint(checkpoint.state, checkpointEvents);
-    const manifest = await this.readManifest(programId);
-    const checkpointEventIds = new Set(checkpoint.event_refs);
-    const laterEvents = manifest.records
-      .filter((entry) => entry.ref.kind === "program_event" && !checkpointEventIds.has(entry.ref.id))
-      .sort(stableEntrySort);
-    for (const entry of laterEvents) {
-      const record = await this.read(entry.ref);
+    const allEventRecords = await this.programEventRecords(programId);
+    const eventsByOrdinal = new Map<number, StoredMemoryRecord>();
+    const cursorOrdinal = checkpoint.event_cursor?.ordinal ?? 0;
+    for (const record of allEventRecords) {
+      const event = this.eventInput(record);
+      const duplicate = eventsByOrdinal.get(event.ordinal);
+      if (duplicate && duplicate.ref.id !== record.ref.id) {
+        throw new Error(`Program event stream has duplicate ordinal ${event.ordinal}.`);
+      }
+      eventsByOrdinal.set(event.ordinal, record);
+      if (event.ordinal <= cursorOrdinal && checkpoint.event_refs[event.ordinal - 1] !== record.ref.id) {
+        throw new Error(`Program event ${record.ref.id} predates or branches away from the checkpoint cursor.`);
+      }
+    }
+    const maximumOrdinal = Math.max(cursorOrdinal, ...eventsByOrdinal.keys());
+    let parentEventRef = checkpoint.event_cursor?.event_ref ?? null;
+    for (let ordinal = cursorOrdinal + 1; ordinal <= maximumOrdinal; ordinal += 1) {
+      const record = eventsByOrdinal.get(ordinal);
+      if (!record) throw new Error(`Program event stream has a sequence gap at ordinal ${ordinal}.`);
+      const event = this.eventInput(record);
+      if (event.parent_event_ref !== parentEventRef) {
+        throw new Error(`Program event ${event.id} has a missing parent or branches away from the checkpoint cursor.`);
+      }
       recoveredState = this.recoveryPolicy.applyEvent(recoveredState, record.content as TProgramEvent);
       replayedEventRefs.push(record.ref);
       verified.add(record.ref.id);
+      parentEventRef = record.ref.id;
     }
     recoveredState = this.recoveryPolicy.validateRecovered(recoveredState);
     return {

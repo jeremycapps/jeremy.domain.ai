@@ -4,13 +4,14 @@ import {
   canonicalMemoryJson,
   memoryContentHash,
   type CheckpointRef,
+  type DomainMemory,
   type MemoryRecovery,
   type ProgramEventMemoryInput
 } from "./domainMemory.js";
 import { applyCorusTransition, planNextCorusAction, validateCorusProgram } from "./corusProgram.js";
 
 export type CorusMemoryEvent = ProgramEventMemoryInput<CorusTransitionEvent>;
-export type CorusDomainMemory = FilesystemDomainMemory<CorusProgram, CorusMemoryEvent, CorusPlannedAction>;
+export type CorusDomainMemory = DomainMemory<CorusProgram, CorusMemoryEvent, CorusPlannedAction>;
 export type CorusMemoryRecovery = MemoryRecovery<CorusProgram, CorusPlannedAction>;
 
 function eventId(event: CorusTransitionEvent, index: number): string {
@@ -93,11 +94,14 @@ export async function persistCorusProgram(memory: CorusDomainMemory, value: unkn
   }
 
   const eventRecordIds: string[] = [];
+  let parentEventRef: string | null = null;
   for (const [index, event] of program.state.history.entries()) {
     const ref = await memory.appendEvent({
       id: eventId(event, index),
       program_ref: program.program_id,
       schema_version: "corus.transition_event.v1",
+      ordinal: index + 1,
+      parent_event_ref: parentEventRef,
       event,
       actor_ref: event.actor_ref,
       occurred_at: event.occurred_at,
@@ -108,6 +112,7 @@ export async function persistCorusProgram(memory: CorusDomainMemory, value: unkn
       source_refs: Object.values(event.artifact_refs)
     });
     eventRecordIds.push(ref.id);
+    parentEventRef = ref.id;
   }
 
   const unresolvedProposalIds: string[] = [];
@@ -140,6 +145,7 @@ export async function persistCorusProgram(memory: CorusDomainMemory, value: unkn
     schema_version: "corus.program_checkpoint.v1",
     state: program,
     event_refs: eventRecordIds,
+    event_cursor: eventRecordIds.length > 0 ? { ordinal: eventRecordIds.length, event_ref: eventRecordIds.at(-1)! } : null,
     admitted_record_refs: admittedRecords.map((ref) => ref.id),
     unresolved_proposal_refs: unresolvedProposalIds,
     required_record_refs: [...sourceRecordIds, ...unresolvedProposalIds],
