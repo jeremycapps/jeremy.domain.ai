@@ -31,7 +31,9 @@ process_definitions:
       - subject_context
       - target_context
     transitions:
-      completed_valid_output: capability_reduction
+      completed_valid_output:
+        target_process_id: capability_reduction
+        target_start_status: completed_valid_output
   - id: capability_reduction
     required_inputs:
       - subject_context
@@ -47,9 +49,15 @@ process_definitions:
     required_artifact_refs:
       - capability_reduction
     transitions:
-      completed_valid_output: capability_validation
-      failed: null
-      architect_required: null
+      completed_valid_output:
+        target_process_id: capability_validation
+        target_start_status: completed_valid_output
+      failed:
+        target_process_id: null
+        target_start_status: null
+      architect_required:
+        target_process_id: null
+        target_start_status: null
   - id: capability_validation
     required_inputs:
       - capability_reduction
@@ -67,10 +75,18 @@ process_definitions:
     required_artifact_refs:
       - capability_validation
     transitions:
-      passed: projection
-      revise: capability_reduction
-      failed: null
-      architect_required: null
+      passed:
+        target_process_id: projection
+        target_start_status: passed
+      revise:
+        target_process_id: capability_reduction
+        target_start_status: completed_valid_output
+      failed:
+        target_process_id: null
+        target_start_status: null
+      architect_required:
+        target_process_id: null
+        target_start_status: null
   - id: projection
     required_inputs:
       - capability_validation
@@ -84,7 +100,9 @@ process_definitions:
     required_artifact_refs:
       - capability_projection
     transitions:
-      completed_valid_output: capability_admission
+      completed_valid_output:
+        target_process_id: capability_admission
+        target_start_status: completed_valid_output
   - id: capability_admission
     required_inputs:
       - capability_projection
@@ -102,9 +120,15 @@ process_definitions:
     required_artifact_refs:
       - author_review
     transitions:
-      awaiting_author: capability_admission
-      admitted: null
-      blocked: null
+      awaiting_author:
+        target_process_id: capability_admission
+        target_start_status: awaiting_author
+      admitted:
+        target_process_id: null
+        target_start_status: null
+      blocked:
+        target_process_id: null
+        target_start_status: null
 state:
   schema_version: corus.program_state.v1
   status: awaiting_author
@@ -115,6 +139,7 @@ state:
     target: test/fixtures/prophet/prophet_senior_product_manager.yaml
     baseline: test/fixtures/prophet/jeremy_prophet_senior_product_manager_capabilities.yaml
   current_process_id: capability_admission
+  current_process_start_status: awaiting_author
   process_status:
     structured_context_preservation: completed_valid_output
     capability_reduction: completed_valid_output
@@ -254,7 +279,8 @@ state:
       actor_ref: corus.runtime
       provider_calls_made: 0
   replay:
-    provider_calls_made: 0
+    replay_provider_calls_made: 0
+    historical_provider_calls_made: 0
     validation_rules:
       - validateContextOutput
       - validateReductionOutput

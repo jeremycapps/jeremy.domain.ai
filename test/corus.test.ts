@@ -11,6 +11,8 @@ import type {
   CapabilityValidation,
   Context,
   ContextualizeInput,
+  CorusProgram,
+  CorusTransitionEvent,
   FailureAnalysis,
   FailureAnalysisInput,
   HandoffFailure,
@@ -1225,21 +1227,228 @@ test("Prophet fixture run can be represented and replayed as a CorusProgram", as
 
   assert.equal(program.schema_version, "corus.program.v1");
   assert.equal(program.object_schemas.objects.capability_reduction, "corus.capability_reduction.v1");
-  assert.equal(program.state.replay.provider_calls_made, 0);
+  assert.equal(program.state.status, "awaiting_author");
+  assert.equal(program.state.current_process_id, "capability_admission");
+  assert.equal(program.state.replay.replay_provider_calls_made, 0);
+  assert.equal(program.state.replay.historical_provider_calls_made, 0);
   assert.equal(replayed.status, run.status);
   assert.deepEqual(replayed.capabilities, run.capabilities);
   assert.deepEqual(replayed.validation, run.validation);
   assert.deepEqual(replayed.projection, run.projection);
 });
 
-test("golden Prophet CorusProgram fixture replays with zero provider calls", async () => {
+test("golden Prophet CorusProgram fixture replays with zero replay provider calls", async () => {
   const program = await loadCorusProgram(path.join(process.cwd(), "test", "fixtures", "prophet", "prophet_corus_program_golden.yaml"));
   const replayed = replayCorusProgram(program);
 
   assert.equal(program.state.mode, "fixture");
   assert.equal(program.state.source_refs.target, "test/fixtures/prophet/prophet_senior_product_manager.yaml");
   assert.equal(program.state.source_refs.baseline, "test/fixtures/prophet/jeremy_prophet_senior_product_manager_capabilities.yaml");
-  assert.equal(program.state.replay.provider_calls_made, 0);
+  assert.equal(program.state.replay.replay_provider_calls_made, 0);
+  assert.equal(program.state.replay.historical_provider_calls_made, 0);
   assert.equal(replayed.status, "passed");
   assert.deepEqual(replayed.projection?.capability_ids, ["cap_product_execution"]);
+});
+
+const prophetProgramPath = path.join(process.cwd(), "test", "fixtures", "prophet", "prophet_corus_program_golden.yaml");
+
+function copyProgram(program: CorusProgram): CorusProgram {
+  return structuredClone(program);
+}
+
+function authorDecisionEvent(
+  overrides: Partial<CorusTransitionEvent> = {}
+): CorusTransitionEvent {
+  return {
+    process_id: "capability_admission",
+    prior_status: "awaiting_author",
+    returned_status: "admitted",
+    artifact_refs: {
+      author_review: "test/fixtures/prophet/prophet_corus_program_golden.yaml#author-review",
+      author_decision: "test/fixtures/prophet/prophet_corus_program_golden.yaml#author-decision"
+    },
+    occurred_at: "2026-07-21T00:01:00.000Z",
+    actor_ref: "author:jeremy",
+    provider_calls_made: 0,
+    ...overrides
+  };
+}
+
+test("Prophet continuation plans the exact side-effect-free author decision contract", async () => {
+  const program = await loadCorusProgram(prophetProgramPath);
+  const before = JSON.stringify(program);
+  const action = planNextCorusAction(program);
+
+  assert.deepEqual(action, {
+    program_id: "prophet-fixture-program-golden",
+    process_id: "capability_admission",
+    operation: "author_decision",
+    target: "capability_admission_checkpoint",
+    reason: "Program is awaiting author admission; only an author decision can advance deterministic continuation.",
+    required_input_refs: [
+      "test/fixtures/prophet/prophet_corus_program_golden.yaml#projection",
+      "test/fixtures/prophet/prophet_corus_program_golden.yaml#validation",
+      "test/fixtures/prophet/jeremy_prophet_senior_product_manager_capabilities.yaml"
+    ],
+    expected_output_contract: {
+      allowed_return_statuses: ["awaiting_author", "admitted", "blocked"],
+      required_artifact_refs: ["author_review", "author_decision"]
+    },
+    execution_required: false
+  });
+  assert.equal(JSON.stringify(program), before);
+  assert.equal(program.state.replay.replay_provider_calls_made, 0);
+});
+
+test("author transition applies the planned contract immutably and records provenance", async () => {
+  const program = await loadCorusProgram(prophetProgramPath);
+  const action = planNextCorusAction(program);
+  assert.ok(action);
+  const before = structuredClone(program);
+  const artifact_refs = Object.fromEntries(
+    action.expected_output_contract.required_artifact_refs.map((name) => [name, `test/fixtures/prophet/${name}.yaml`])
+  );
+  const event = authorDecisionEvent({ artifact_refs });
+  const next = applyCorusTransition(program, event);
+
+  assert.deepEqual(program, before);
+  assert.notEqual(next, program);
+  assert.equal(next.state.status, "admitted");
+  assert.equal(next.state.history.length, program.state.history.length + 1);
+  assert.deepEqual(next.state.history.at(-1), event);
+  assert.equal(next.state.replay.replay_provider_calls_made, 0);
+  assert.equal(next.state.replay.historical_provider_calls_made, 0);
+  assert.equal(planNextCorusAction(next), null);
+});
+
+test("history replay is deterministic and agrees with serialized program state", async () => {
+  const program = await loadCorusProgram(prophetProgramPath);
+  const before = JSON.stringify(program);
+  const first = replayCorusProgramState(program);
+  const second = replayCorusProgramState(program);
+
+  assert.deepEqual(first, second);
+  assert.equal(first.status, program.state.status);
+  assert.equal(first.current_process_id, program.state.current_process_id);
+  assert.equal(first.current_process_start_status, program.state.current_process_start_status);
+  assert.deepEqual(first.process_status, program.state.process_status);
+  assert.equal(first.replay.replay_provider_calls_made, 0);
+  assert.equal(JSON.stringify(program), before);
+});
+
+test("revise preserves the return status while explicitly re-entering capability reduction", async () => {
+  const golden = await loadCorusProgram(prophetProgramPath);
+  const program = copyProgram(golden);
+  program.state.history = program.state.history.slice(0, 2);
+  program.state.status = "completed_valid_output";
+  program.state.current_process_id = "capability_validation";
+  program.state.current_process_start_status = "completed_valid_output";
+  program.state.process_status = {
+    structured_context_preservation: "completed_valid_output",
+    capability_reduction: "completed_valid_output",
+    capability_validation: "ready",
+    projection: "ready",
+    capability_admission: "ready"
+  };
+  validateCorusProgram(program);
+
+  const revised = applyCorusTransition(program, {
+    process_id: "capability_validation",
+    prior_status: "completed_valid_output",
+    returned_status: "revise",
+    artifact_refs: { capability_validation: "test/fixtures/prophet/revision-required.yaml" },
+    occurred_at: "2026-07-21T00:01:00.000Z",
+    actor_ref: "corus.validator",
+    provider_calls_made: 0
+  });
+  assert.equal(revised.state.status, "revise");
+  assert.equal(revised.state.current_process_id, "capability_reduction");
+  assert.equal(revised.state.current_process_start_status, "completed_valid_output");
+  assert.equal(planNextCorusAction(revised)?.process_id, "capability_reduction");
+
+  const reducedAgain = applyCorusTransition(revised, {
+    process_id: "capability_reduction",
+    prior_status: "completed_valid_output",
+    returned_status: "completed_valid_output",
+    artifact_refs: { capability_reduction: "test/fixtures/prophet/revised-capabilities.yaml" },
+    occurred_at: "2026-07-21T00:02:00.000Z",
+    actor_ref: "corus.runtime",
+    provider_calls_made: 0
+  });
+  assert.equal(reducedAgain.state.current_process_id, "capability_validation");
+  assert.equal(reducedAgain.state.current_process_start_status, "completed_valid_output");
+});
+
+test("historical provider calls require and reconcile to execution receipts while replay calls remain zero", async () => {
+  const program = copyProgram(await loadCorusProgram(prophetProgramPath));
+  program.state.history[1] = {
+    ...program.state.history[1],
+    provider_calls_made: 2,
+    execution_receipts: [{ id: "receipt-capability-reduction", provider_calls_made: 2 }]
+  };
+  program.state.replay.historical_provider_calls_made = 2;
+
+  const validated = validateCorusProgram(program);
+  const replayed = replayCorusProgramState(validated);
+  assert.equal(replayed.replay.historical_provider_calls_made, 2);
+  assert.equal(replayed.replay.replay_provider_calls_made, 0);
+});
+
+test("transition rejects skipping the required current process", async () => {
+  const program = await loadCorusProgram(prophetProgramPath);
+  assert.throws(() => applyCorusTransition(program, authorDecisionEvent({ process_id: "projection" })), /Cannot skip required process capability_admission/);
+});
+
+test("transition rejects an unsupported returned status", async () => {
+  const program = await loadCorusProgram(prophetProgramPath);
+  assert.throws(() => applyCorusTransition(program, authorDecisionEvent({ returned_status: "passed" })), /returned unsupported status passed/);
+});
+
+test("transition rejects completion without required artifact references", async () => {
+  const program = await loadCorusProgram(prophetProgramPath);
+  assert.throws(
+    () => applyCorusTransition(program, authorDecisionEvent({ artifact_refs: { author_decision: "test/fixtures/prophet/author-decision.yaml" } })),
+    /missing required artifact ref author_review/
+  );
+});
+
+test("transition rejects changing an already completed process without an explicit change transition", async () => {
+  const admitted = applyCorusTransition(await loadCorusProgram(prophetProgramPath), authorDecisionEvent());
+  assert.throws(
+    () => applyCorusTransition(admitted, authorDecisionEvent({ prior_status: "admitted", returned_status: "blocked" })),
+    /Cannot change already completed process capability_admission/
+  );
+});
+
+test("transition rejects advancing awaiting_author without an author decision", async () => {
+  const program = await loadCorusProgram(prophetProgramPath);
+  assert.throws(
+    () => applyCorusTransition(program, authorDecisionEvent({ artifact_refs: { author_review: "test/fixtures/prophet/author-review.yaml" } })),
+    /requires an author_decision artifact/
+  );
+});
+
+test("transition rejects nonzero provider calls without execution receipts", async () => {
+  const program = await loadCorusProgram(prophetProgramPath);
+  assert.throws(
+    () => applyCorusTransition(program, authorDecisionEvent({ provider_calls_made: 1 })),
+    /with provider calls requires execution receipts/
+  );
+});
+
+test("transition rejects provider calls inconsistent with execution receipts", async () => {
+  const program = await loadCorusProgram(prophetProgramPath);
+  assert.throws(
+    () => applyCorusTransition(program, authorDecisionEvent({
+      provider_calls_made: 2,
+      execution_receipts: [{ id: "receipt-author-decision", provider_calls_made: 1 }]
+    })),
+    /provider_calls_made is inconsistent with execution receipts/
+  );
+});
+
+test("validation rejects serialized state that disagrees with deterministic history replay", async () => {
+  const program = copyProgram(await loadCorusProgram(prophetProgramPath));
+  program.state.status = "admitted";
+  assert.throws(() => validateCorusProgram(program), /history replays to a different current process, start status, or return status/);
 });

@@ -495,6 +495,11 @@ export type CorusProgramStatus =
   | "blocked"
   | "replayable";
 
+export interface CorusProcessTransition {
+  target_process_id: string | null;
+  target_start_status: CorusProgramStatus | null;
+}
+
 export interface CorusProcessDefinition {
   id: string;
   required_inputs: string[];
@@ -502,7 +507,7 @@ export interface CorusProcessDefinition {
   allowed_start_statuses: CorusProgramStatus[];
   allowed_return_statuses: CorusProgramStatus[];
   required_artifact_refs: string[];
-  transitions: Record<string, string | null>;
+  transitions: Record<string, CorusProcessTransition>;
 }
 
 export interface CorusPlannedAction {
@@ -559,6 +564,7 @@ export interface CorusProgramState {
     baseline?: string;
   };
   current_process_id: string;
+  current_process_start_status: CorusProgramStatus;
   process_status: Record<string, CorusProgramStatus>;
   contexts: {
     subject: Context;
@@ -573,7 +579,8 @@ export interface CorusProgramState {
   failure_analysis?: FailureAnalysis;
   history: CorusTransitionEvent[];
   replay: {
-    provider_calls_made: number;
+    replay_provider_calls_made: 0;
+    historical_provider_calls_made: number;
     validation_rules: string[];
   };
 }
