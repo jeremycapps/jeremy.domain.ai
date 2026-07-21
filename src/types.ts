@@ -529,6 +529,8 @@ export interface CorusExecutionReceipt {
   provider_calls_made: number;
 }
 
+export type CorusStageExecutionReceipts = Record<string, CorusExecutionReceipt[]>;
+
 export interface CorusTransitionEvent {
   process_id: string;
   prior_status: CorusProgramStatus;

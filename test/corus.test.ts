@@ -12,6 +12,7 @@ import type {
   Context,
   ContextualizeInput,
   CorusProgram,
+  CorusStageExecutionReceipts,
   CorusTransitionEvent,
   FailureAnalysis,
   FailureAnalysisInput,
@@ -1274,6 +1275,55 @@ function authorDecisionEvent(
   };
 }
 
+async function liveProgramConversionInput() {
+  const fixtureProgram = await loadCorusProgram(prophetProgramPath);
+  return {
+    request: {
+      subject_source: fixtureProgram.state.source_refs.subject,
+      target_source: fixtureProgram.state.source_refs.target,
+      projection: "capability_assessment" as const,
+      mode: "live" as const
+    },
+    run: { ...replayCorusProgram(fixtureProgram), mode: "live" as const },
+    programId: "prophet-live-provenance-test",
+    baselineRef: fixtureProgram.state.source_refs.baseline
+  };
+}
+
+test("live run conversion preserves exact stage-scoped execution receipt totals", async () => {
+  const input = await liveProgramConversionInput();
+  const stageExecutionReceipts: CorusStageExecutionReceipts = {
+    structured_context_preservation: [{ id: "receipt-contexts", provider_calls_made: 2 }],
+    capability_reduction: [{ id: "receipt-reduction", provider_calls_made: 1 }],
+    capability_validation: [{ id: "receipt-validation", provider_calls_made: 1 }],
+    projection: [{ id: "receipt-projection-zero", provider_calls_made: 0 }],
+    capability_admission: [{ id: "receipt-admission-zero", provider_calls_made: 0 }]
+  };
+  const program = buildCorusProgramFromRun({ ...input, stageExecutionReceipts });
+
+  assert.equal(program.state.replay.historical_provider_calls_made, 4);
+  assert.equal(program.state.replay.replay_provider_calls_made, 0);
+  assert.deepEqual(
+    Object.fromEntries(program.state.history.map((event) => [event.process_id, event.provider_calls_made])),
+    {
+      structured_context_preservation: 2,
+      capability_reduction: 1,
+      capability_validation: 1,
+      projection: 0,
+      capability_admission: 0
+    }
+  );
+  assert.deepEqual(program.state.history.map((event) => event.execution_receipts), Object.values(stageExecutionReceipts));
+});
+
+test("live run conversion rejects missing required execution receipts", async () => {
+  const input = await liveProgramConversionInput();
+  assert.throws(
+    () => buildCorusProgramFromRun(input),
+    /Live CorusProgram conversion requires execution receipts for process structured_context_preservation/
+  );
+});
+
 test("Prophet continuation plans the exact side-effect-free author decision contract", async () => {
   const program = await loadCorusProgram(prophetProgramPath);
   const before = JSON.stringify(program);
@@ -1451,4 +1501,24 @@ test("validation rejects serialized state that disagrees with deterministic hist
   const program = copyProgram(await loadCorusProgram(prophetProgramPath));
   program.state.status = "admitted";
   assert.throws(() => validateCorusProgram(program), /history replays to a different current process, start status, or return status/);
+});
+
+test("validation rejects a history event with a missing actor_ref", async () => {
+  const program = copyProgram(await loadCorusProgram(prophetProgramPath));
+  program.state.history[0].actor_ref = "   ";
+  assert.throws(() => validateCorusProgram(program), /actor_ref must be a nonempty string/);
+});
+
+test("validation rejects missing or invalid history event occurred_at", async () => {
+  const missing = copyProgram(await loadCorusProgram(prophetProgramPath));
+  delete (missing.state.history[0] as { occurred_at?: string }).occurred_at;
+  assert.throws(() => validateCorusProgram(missing), /occurred_at must be a valid ISO-8601 timestamp/);
+
+  const invalid = copyProgram(await loadCorusProgram(prophetProgramPath));
+  invalid.state.history[0].occurred_at = "not-a-timestamp";
+  assert.throws(() => validateCorusProgram(invalid), /occurred_at must be a valid ISO-8601 timestamp/);
+
+  const invalidCalendarDate = copyProgram(await loadCorusProgram(prophetProgramPath));
+  invalidCalendarDate.state.history[0].occurred_at = "2026-02-30T00:00:00Z";
+  assert.throws(() => validateCorusProgram(invalidCalendarDate), /occurred_at must be a valid ISO-8601 timestamp/);
 });

@@ -4,12 +4,14 @@ import type {
   CapabilityAnalysisRequest,
   CapabilityAnalysisResponse,
   CapabilityReduction,
+  CorusExecutionReceipt,
   CorusPlannedAction,
   CorusProcessDefinition,
   CorusProgram,
   CorusProgramObjectSchemas,
   CorusProgramState,
   CorusProgramStatus,
+  CorusStageExecutionReceipts,
   CorusTransitionEvent
 } from "../types.js";
 import { sourceRefFromInput } from "./corusContext.js";
@@ -186,6 +188,7 @@ function transitionEvent(input: {
   artifact_refs: Record<string, string>;
   actor_ref: string;
   provider_calls_made: number;
+  execution_receipts?: CorusExecutionReceipt[];
   occurred_at?: string;
 }): CorusTransitionEvent {
   return {
@@ -195,15 +198,37 @@ function transitionEvent(input: {
     artifact_refs: input.artifact_refs,
     occurred_at: input.occurred_at ?? new Date().toISOString(),
     actor_ref: input.actor_ref,
-    provider_calls_made: input.provider_calls_made
+    provider_calls_made: input.provider_calls_made,
+    ...(input.execution_receipts ? { execution_receipts: clone(input.execution_receipts) } : {})
   };
 }
 
-function buildHistoryFromRun(run: CapabilityAnalysisResponse): CorusTransitionEvent[] {
+function executionForStage(
+  run: CapabilityAnalysisResponse,
+  stageExecutionReceipts: CorusStageExecutionReceipts | undefined,
+  processId: string
+): { provider_calls_made: number; execution_receipts?: CorusExecutionReceipt[] } {
+  const receipts = stageExecutionReceipts?.[processId];
+  if (run.mode === "live" && (!Array.isArray(receipts) || receipts.length === 0)) {
+    throw new Error(`Live CorusProgram conversion requires execution receipts for process ${processId}.`);
+  }
+  if (receipts === undefined) return { provider_calls_made: 0 };
+  if (!Array.isArray(receipts)) throw new Error(`Execution receipts for process ${processId} must be an array.`);
+  const providerCallsMade = executionReceiptTotal(processId, receipts);
+  return { provider_calls_made: providerCallsMade, execution_receipts: receipts };
+}
+
+function buildHistoryFromRun(
+  run: CapabilityAnalysisResponse,
+  stageExecutionReceipts?: CorusStageExecutionReceipts
+): CorusTransitionEvent[] {
   const refsByType = new Map(run.generation_records.map((record) => [record.type, record.output_ref]));
   const subjectRef = run.generation_records.find((record) => record.type === "contextualization" && record.input_refs.some((ref) => ref.includes("jeremy") || ref.includes("subject")))?.output_ref;
   const targetRef = run.generation_records.find((record) => record.type === "contextualization" && record.output_ref !== subjectRef)?.output_ref;
   const validationStatus = run.validation.status === "passed" ? "passed" : run.validation.status;
+  const contextExecution = executionForStage(run, stageExecutionReceipts, "structured_context_preservation");
+  const reductionExecution = executionForStage(run, stageExecutionReceipts, "capability_reduction");
+  const validationExecution = executionForStage(run, stageExecutionReceipts, "capability_validation");
   const history: CorusTransitionEvent[] = [
     transitionEvent({
       process_id: "structured_context_preservation",
@@ -214,7 +239,7 @@ function buildHistoryFromRun(run: CapabilityAnalysisResponse): CorusTransitionEv
         target_context: targetRef ?? `${run.artifact_dir}/01-target-context.yaml`
       },
       actor_ref: "corus.runtime",
-      provider_calls_made: 0
+      ...contextExecution
     }),
     transitionEvent({
       process_id: "capability_reduction",
@@ -222,7 +247,7 @@ function buildHistoryFromRun(run: CapabilityAnalysisResponse): CorusTransitionEv
       returned_status: "completed_valid_output",
       artifact_refs: { capability_reduction: refsByType.get("capability_reduction") ?? `${run.artifact_dir}/02-capabilities.yaml` },
       actor_ref: "corus.runtime",
-      provider_calls_made: 0
+      ...reductionExecution
     }),
     transitionEvent({
       process_id: "capability_validation",
@@ -230,11 +255,13 @@ function buildHistoryFromRun(run: CapabilityAnalysisResponse): CorusTransitionEv
       returned_status: validationStatus,
       artifact_refs: { capability_validation: refsByType.get("capability_validation") ?? `${run.artifact_dir}/03-validation.yaml` },
       actor_ref: "corus.runtime",
-      provider_calls_made: 0
+      ...validationExecution
     })
   ];
 
   if (run.projection) {
+    const projectionExecution = executionForStage(run, stageExecutionReceipts, "projection");
+    const admissionExecution = executionForStage(run, stageExecutionReceipts, "capability_admission");
     history.push(
       transitionEvent({
         process_id: "projection",
@@ -242,7 +269,7 @@ function buildHistoryFromRun(run: CapabilityAnalysisResponse): CorusTransitionEv
         returned_status: "completed_valid_output",
         artifact_refs: { capability_projection: refsByType.get("projection") ?? `${run.artifact_dir}/04-projection.md` },
         actor_ref: "corus.runtime",
-        provider_calls_made: 0
+        ...projectionExecution
       }),
       transitionEvent({
         process_id: "capability_admission",
@@ -250,7 +277,7 @@ function buildHistoryFromRun(run: CapabilityAnalysisResponse): CorusTransitionEv
         returned_status: "awaiting_author",
         artifact_refs: { author_review: `${run.artifact_dir}/capability-admission-review.yaml` },
         actor_ref: "corus.runtime",
-        provider_calls_made: 0
+        ...admissionExecution
       })
     );
   }
@@ -261,6 +288,34 @@ function buildHistoryFromRun(run: CapabilityAnalysisResponse): CorusTransitionEv
 type HistoryReplay = Pick<CorusProgramState, "status" | "current_process_id" | "current_process_start_status" | "process_status"> & {
   historical_provider_calls_made: number;
 };
+
+function isValidOccurredAt(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|[+-]\d{2}:\d{2})$/.exec(value);
+  if (!match || Number.isNaN(Date.parse(value))) return false;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, fraction = "0"] = match;
+  const [year, month, day, hour, minute, second, millisecond] = [
+    yearText,
+    monthText,
+    dayText,
+    hourText,
+    minuteText,
+    secondText,
+    fraction.padEnd(3, "0")
+  ].map(Number);
+  const localTime = new Date(0);
+  localTime.setUTCFullYear(year, month - 1, day);
+  localTime.setUTCHours(hour, minute, second, millisecond);
+  return (
+    localTime.getUTCFullYear() === year &&
+    localTime.getUTCMonth() === month - 1 &&
+    localTime.getUTCDate() === day &&
+    localTime.getUTCHours() === hour &&
+    localTime.getUTCMinutes() === minute &&
+    localTime.getUTCSeconds() === second &&
+    localTime.getUTCMilliseconds() === millisecond
+  );
+}
 
 function validateProcessGraph(definitions: CorusProcessDefinition[]) {
   if (definitions.length === 0) throw new Error("CorusProgram process_definitions must not be empty.");
@@ -289,7 +344,11 @@ function validateProcessGraph(definitions: CorusProcessDefinition[]) {
   }
 }
 
-function replayHistory(definitions: CorusProcessDefinition[], history: CorusTransitionEvent[]): HistoryReplay {
+function replayHistory(
+  definitions: CorusProcessDefinition[],
+  history: CorusTransitionEvent[],
+  requireExecutionReceipts = false
+): HistoryReplay {
   const definitionsById = processMap(definitions);
   const processStatus = Object.fromEntries(definitions.map((definition) => [definition.id, "ready" as CorusProgramStatus]));
   let currentProcessId = definitions[0]?.id;
@@ -301,7 +360,7 @@ function replayHistory(definitions: CorusProcessDefinition[], history: CorusTran
     const definition = definitionsById.get(event.process_id);
     if (!definition) throw new Error(`Unknown process ${event.process_id}.`);
     if (event.process_id !== currentProcessId) throw new Error(`Cannot skip required process ${currentProcessId}; received ${event.process_id}.`);
-    validateTransitionEvent(event, definition, currentProcessStartStatus, processStatus[event.process_id]);
+    validateTransitionEvent(event, definition, currentProcessStartStatus, processStatus[event.process_id], requireExecutionReceipts);
     processStatus[event.process_id] = event.returned_status;
     returnedStatus = event.returned_status;
     historicalProviderCallsMade += event.provider_calls_made;
@@ -323,8 +382,15 @@ function validateTransitionEvent(
   event: CorusTransitionEvent,
   definition: CorusProcessDefinition,
   currentProcessStartStatus: CorusProgramStatus,
-  processStatus: CorusProgramStatus
+  processStatus: CorusProgramStatus,
+  requireExecutionReceipts = false
 ) {
+  if (typeof event.actor_ref !== "string" || event.actor_ref.trim().length === 0) {
+    throw new Error(`Transition ${event.process_id} actor_ref must be a nonempty string.`);
+  }
+  if (!isValidOccurredAt(event.occurred_at)) {
+    throw new Error(`Transition ${event.process_id} occurred_at must be a valid ISO-8601 timestamp.`);
+  }
   if (terminalStatuses.has(processStatus)) {
     throw new Error(`Cannot change already completed process ${event.process_id} without an explicit change transition.`);
   }
@@ -345,25 +411,42 @@ function validateTransitionEvent(
   if (!Number.isInteger(event.provider_calls_made) || event.provider_calls_made < 0) {
     throw new Error(`Transition ${event.process_id} provider_calls_made must be a nonnegative integer.`);
   }
+  if (requireExecutionReceipts && (!Array.isArray(event.execution_receipts) || event.execution_receipts.length === 0)) {
+    throw new Error(`Live transition ${event.process_id} requires execution receipts, including explicit zero-call evidence.`);
+  }
   if (event.provider_calls_made > 0 && (!Array.isArray(event.execution_receipts) || event.execution_receipts.length === 0)) {
     throw new Error(`Transition ${event.process_id} with provider calls requires execution receipts.`);
   }
   if (event.execution_receipts !== undefined) {
     if (!Array.isArray(event.execution_receipts)) throw new Error(`Transition ${event.process_id} execution_receipts must be an array.`);
-    const receiptTotal = event.execution_receipts.reduce((sum, receipt) => {
-      if (!receipt || typeof receipt.id !== "string" || !Number.isInteger(receipt.provider_calls_made) || receipt.provider_calls_made < 0) {
-        throw new Error(`Transition ${event.process_id} has an invalid execution receipt.`);
-      }
-      return sum + receipt.provider_calls_made;
-    }, 0);
+    const receiptTotal = executionReceiptTotal(event.process_id, event.execution_receipts);
     if (receiptTotal !== event.provider_calls_made) {
       throw new Error(`Transition ${event.process_id} provider_calls_made is inconsistent with execution receipts.`);
     }
   }
 }
 
-function processStatusFromHistory(definitions: CorusProcessDefinition[], history: CorusTransitionEvent[]) {
-  return replayHistory(definitions, history);
+function executionReceiptTotal(processId: string, receipts: CorusExecutionReceipt[]): number {
+  return receipts.reduce((sum, receipt) => {
+    if (
+      !receipt ||
+      typeof receipt.id !== "string" ||
+      receipt.id.trim().length === 0 ||
+      !Number.isInteger(receipt.provider_calls_made) ||
+      receipt.provider_calls_made < 0
+    ) {
+      throw new Error(`Transition ${processId} has an invalid execution receipt.`);
+    }
+    return sum + receipt.provider_calls_made;
+  }, 0);
+}
+
+function processStatusFromHistory(
+  definitions: CorusProcessDefinition[],
+  history: CorusTransitionEvent[],
+  requireExecutionReceipts = false
+) {
+  return replayHistory(definitions, history, requireExecutionReceipts);
 }
 
 export function buildCorusProgramFromRun(input: {
@@ -373,6 +456,7 @@ export function buildCorusProgramFromRun(input: {
   objective?: string;
   constraints?: string[];
   baselineRef?: string;
+  stageExecutionReceipts?: CorusStageExecutionReceipts;
 }): CorusProgram {
   const reduction: CapabilityReduction = {
     reducer: "capabilities",
@@ -382,8 +466,8 @@ export function buildCorusProgramFromRun(input: {
     },
     capabilities: input.run.capabilities
   };
-  const history = buildHistoryFromRun(input.run);
-  const replay = processStatusFromHistory(CORUS_PROCESS_DEFINITIONS, history);
+  const history = buildHistoryFromRun(input.run, input.stageExecutionReceipts);
+  const replay = processStatusFromHistory(CORUS_PROCESS_DEFINITIONS, history, input.run.mode === "live");
 
   return validateCorusProgram({
     schema_version: "corus.program.v1",
@@ -478,10 +562,16 @@ export function applyCorusTransition(value: unknown, event: CorusTransitionEvent
   if (event.process_id !== program.state.current_process_id) {
     throw new Error(`Cannot skip required process ${program.state.current_process_id}; received ${event.process_id}.`);
   }
-  validateTransitionEvent(event, definition, program.state.current_process_start_status, program.state.process_status[event.process_id]);
+  validateTransitionEvent(
+    event,
+    definition,
+    program.state.current_process_start_status,
+    program.state.process_status[event.process_id],
+    program.state.mode === "live"
+  );
   const next = clone(program);
   next.state.history = [...next.state.history, clone(event)];
-  const replay = processStatusFromHistory(next.process_definitions, next.state.history);
+  const replay = processStatusFromHistory(next.process_definitions, next.state.history, next.state.mode === "live");
   next.state.status = replay.status;
   next.state.current_process_id = replay.current_process_id;
   next.state.current_process_start_status = replay.current_process_start_status;
@@ -544,7 +634,7 @@ export function validateCorusProgram(value: unknown): CorusProgram {
     throw new Error("CorusProgram reduction changed during validation.");
   }
 
-  const replay = processStatusFromHistory(processDefinitions, state.history as CorusTransitionEvent[]);
+  const replay = processStatusFromHistory(processDefinitions, state.history as CorusTransitionEvent[], state.mode === "live");
   if (
     replay.status !== state.status ||
     replay.current_process_id !== state.current_process_id ||
@@ -566,7 +656,7 @@ export function validateCorusProgram(value: unknown): CorusProgram {
 
 export function replayCorusProgramState(value: unknown): CorusProgramState {
   const program = validateCorusProgram(value);
-  const replay = processStatusFromHistory(program.process_definitions, program.state.history);
+  const replay = processStatusFromHistory(program.process_definitions, program.state.history, program.state.mode === "live");
   return {
     ...clone(program.state),
     status: replay.status,
