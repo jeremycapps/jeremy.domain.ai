@@ -688,10 +688,12 @@ export function replayCorusProgram(value: unknown): CapabilityAnalysisResponse {
   };
 }
 
+/** Compatibility loader for standalone YAML fixtures. Durable recovery uses Corus DomainMemory. */
 export async function loadCorusProgram(filePath: string): Promise<CorusProgram> {
   return validateCorusProgram(parse(await fs.readFile(filePath, "utf8")));
 }
 
+/** Compatibility writer for standalone YAML artifacts. Durable persistence uses Corus DomainMemory. */
 export async function writeCorusProgram(filePath: string, program: CorusProgram): Promise<string> {
   await fs.writeFile(filePath, stringify(validateCorusProgram(program)), "utf8");
   return filePath;
